@@ -30,6 +30,8 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+const int RECURSION_DEPTH = 2;
+
 enum class ViewMode {
 	Rasterization = 0,
 	RayTracing = 1
@@ -53,31 +55,53 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 }
 
+static glm::vec3 calculateColor(const Scene& scene, Ray ray, HitInfo hitInfo)
+{
 
-// NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+	glm::vec3 color = glm::vec3(0.0f);
+
+	for (const PointLight& pointLight : scene.pointLights) {
+		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
+		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+
+		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
+		const float dist2 = glm::dot(diff, diff);
+		const glm::vec3 Li = pointLight.color / dist2;
+		color *= Li;
+	}
+
+	return color;
+}
+
+
+static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int depth)
 {
 	HitInfo hitInfo;
 
 	glm::vec3 color = glm::vec3(0.0f);
 
+	float bias = 0.00001f;
 	if (bvh.intersect(ray, hitInfo)) {
-
-		for (const PointLight& pointLight : scene.pointLights) {
-			color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
-			color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
-
-			const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
-			const float dist2 = glm::dot(diff, diff);
-			const glm::vec3 Li = pointLight.color / dist2;
-			color *= Li;
+		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH) {
+			Ray reflectedRay;
+			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
+			reflectedRay.origin = (ray.origin + ray.direction * ray.t) + reflectedRay.direction * bias;
+			color = getFinalColorRecursive(scene, bvh, reflectedRay, depth);
 		}
-
+		else {
+			color = calculateColor(scene, ray, hitInfo);
+		}
 	}
-
 	drawRay(ray, color);
 	return color;
 }
+
+
+static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+{
+	return getFinalColorRecursive(scene, bvh, ray, 0);
+}
+
 
 static void setOpenGLMatrices(const Trackball& camera);
 static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
