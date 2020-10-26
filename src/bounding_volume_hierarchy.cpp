@@ -1,9 +1,11 @@
 #include "bounding_volume_hierarchy.h"
 #include "draw.h"
-
+#include <glm/geometric.hpp>
+#include <glm/gtx/component_wise.hpp>
+#include <glm/vector_relational.hpp>
 
 BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
-    : m_pScene(pScene)
+	: m_pScene(pScene)
 {
 }
 
@@ -13,19 +15,19 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
 void BoundingVolumeHierarchy::debugDraw(int level)
 {
 
-    // Draw the AABB as a transparent green box.
-    //AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-    //drawShape(aabb, DrawMode::Filled, glm::vec3(0.0f, 1.0f, 0.0f), 0.2f);
+	// Draw the AABB as a transparent green box.
+	//AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
+	//drawShape(aabb, DrawMode::Filled, glm::vec3(0.0f, 1.0f, 0.0f), 0.2f);
 
-    // Draw the AABB as a (white) wireframe box.
-    AxisAlignedBox aabb { glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-    //drawAABB(aabb, DrawMode::Wireframe);
-    drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1f);
+	// Draw the AABB as a (white) wireframe box.
+	AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
+	//drawAABB(aabb, DrawMode::Wireframe);
+	drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1f);
 }
 
 int BoundingVolumeHierarchy::numLevels() const
 {
-    return 5;
+	return 5;
 }
 
 // Return true if something is hit, returns false otherwise. Only find hits if they are closer than t stored
@@ -34,21 +36,26 @@ int BoundingVolumeHierarchy::numLevels() const
 // file you like, including bounding_volume_hierarchy.h .
 bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo) const
 {
-    bool hit = false;
-    // Intersect with all triangles of all meshes.
-    for (const auto& mesh : m_pScene->meshes) {
-        for (const auto& tri : mesh.triangles) {
-            const auto v0 = mesh.vertices[tri[0]];
-            const auto v1 = mesh.vertices[tri[1]];
-            const auto v2 = mesh.vertices[tri[2]];
-            if (intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo)) {
-                hitInfo.material = mesh.material;
-                hit = true;
-            }
-        }
-    }
-    // Intersect with spheres.
-    for (const auto& sphere : m_pScene->spheres)
-        hit |= intersectRayWithShape(sphere, ray, hitInfo);
-    return hit;
+	bool hit = false;
+	float t = ray.t;
+	// Intersect with all triangles of all meshes.
+	for (const auto& mesh : m_pScene->meshes) {
+		for (const auto& tri : mesh.triangles) {
+			const auto v0 = mesh.vertices[tri[0]];
+			const auto v1 = mesh.vertices[tri[1]];
+			const auto v2 = mesh.vertices[tri[2]];
+			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
+			if (ray.t < t) {
+				hitInfo.normal = glm::cross((v1.p - v0.p), (v2.p - v0.p));
+				hitInfo.material = mesh.material;
+				t = ray.t;
+			}
+		}
+	}
+	ray.t = t;
+
+	// Intersect with spheres.
+	for (const auto& sphere : m_pScene->spheres)
+		hit |= intersectRayWithShape(sphere, ray, hitInfo);
+	return hit;
 }
