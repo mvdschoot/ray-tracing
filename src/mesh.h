@@ -1,5 +1,6 @@
 #pragma once
 #include "disable_all_warnings.h"
+#include "image.h"
 // Suppress warnings in third-party code.
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
@@ -7,11 +8,13 @@ DISABLE_WARNINGS_PUSH()
 #include <gsl-lite/gsl-lite.hpp>
 DISABLE_WARNINGS_POP()
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 struct Vertex {
     glm::vec3 p; // Position.
     glm::vec3 n; // Normal.
+    glm::vec2 texCoord;
 };
 
 struct Material {
@@ -20,6 +23,8 @@ struct Material {
     float shininess { 1.0f };
 
     float transparency { 1.0f };
+
+    std::optional<Image> kdTexture;
 };
 
 using Triangle = glm::uvec3;

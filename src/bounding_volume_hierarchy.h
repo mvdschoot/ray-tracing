@@ -1,6 +1,8 @@
 #pragma once
 #include "ray_tracing.h"
 #include "scene.h"
+#include <array>
+#include <gsl-lite/gsl-lite.hpp>
 
 class BoundingVolumeHierarchy {
 public:

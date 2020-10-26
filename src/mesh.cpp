@@ -104,7 +104,11 @@ std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNorm
             for (unsigned j = 0; j < pAssimpMesh->mNumVertices; j++) {
                 const glm::vec3 pos = matrix * glm::vec4(assimpVec(pAssimpMesh->mVertices[j]), 1.0f);
                 const glm::vec3 normal = normalMatrix * assimpVec(pAssimpMesh->mNormals[j]);
-                mesh.vertices.push_back(Vertex { pos, normal });
+                glm::vec2 texCoord { 0.0f };
+                if (pAssimpMesh->mTextureCoords[0]) {
+                    texCoord = assimpVec(pAssimpMesh->mTextureCoords[0][j]);
+                }
+                mesh.vertices.push_back(Vertex { pos, normal, texCoord });
             }
 
             // Read the material, more info can be found here:
@@ -120,6 +124,13 @@ std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool centerAndNorm
                 pAssimpMaterial->Get(pKey, type, idx, value);
                 return value;
             };
+
+            aiString relativeTexturePath;
+            if (pAssimpMaterial->GetTexture(aiTextureType_DIFFUSE, 0, &relativeTexturePath) == AI_SUCCESS) {
+                std::filesystem::path textureBasePath = std::filesystem::absolute(file).parent_path();
+                std::filesystem::path absoluteTexturePath = textureBasePath / std::filesystem::path(relativeTexturePath.C_Str());
+                mesh.material.kdTexture = Image(absoluteTexturePath);
+            }
 
             mesh.material.kd = getMaterialColor(AI_MATKEY_COLOR_DIFFUSE);
             mesh.material.ks = getMaterialColor(AI_MATKEY_COLOR_SPECULAR);

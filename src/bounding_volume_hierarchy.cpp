@@ -1,11 +1,10 @@
 #include "bounding_volume_hierarchy.h"
 #include "draw.h"
 
+
 BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
     : m_pScene(pScene)
 {
-
-    // as an example of how to iterate over all meshes in the scene, look at the intersect method below
 }
 
 // Use this function to visualize your BVH. This can be useful for debugging. Use the functions in
@@ -21,7 +20,7 @@ void BoundingVolumeHierarchy::debugDraw(int level)
     // Draw the AABB as a (white) wireframe box.
     AxisAlignedBox aabb { glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
     //drawAABB(aabb, DrawMode::Wireframe);
-    drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1);
+    drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1f);
 }
 
 int BoundingVolumeHierarchy::numLevels() const
