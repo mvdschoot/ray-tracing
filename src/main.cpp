@@ -57,7 +57,6 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 static glm::vec3 calculateColor(const Scene& scene, Ray ray, HitInfo hitInfo)
 {
-
 	glm::vec3 color = glm::vec3(0.0f);
 
 	for (const PointLight& pointLight : scene.pointLights) {
@@ -77,10 +76,10 @@ static glm::vec3 calculateColor(const Scene& scene, Ray ray, HitInfo hitInfo)
 static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int depth)
 {
 	HitInfo hitInfo;
-
 	glm::vec3 color = glm::vec3(0.0f);
 
 	float bias = 0.00001f;
+
 	if (bvh.intersect(ray, hitInfo)) {
 		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH) {
 			Ray reflectedRay;
@@ -92,6 +91,7 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 			color = calculateColor(scene, ray, hitInfo);
 		}
 	}
+
 	drawRay(ray, color);
 	return color;
 }
