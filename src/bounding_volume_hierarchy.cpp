@@ -46,7 +46,7 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo) const
 			const auto v2 = mesh.vertices[tri[2]];
 			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
 			if (ray.t < t) {
-				hitInfo.normal = glm::cross((v1.p - v0.p), (v2.p - v0.p));
+				hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
 				hitInfo.material = mesh.material;
 				t = ray.t;
 			}
