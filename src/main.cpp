@@ -55,19 +55,38 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 }
 
-static glm::vec3 calculateColor(const Scene& scene, Ray ray, HitInfo hitInfo)
+static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo)
 {
 
 	glm::vec3 color = glm::vec3(0.0f);
 
 	for (const PointLight& pointLight : scene.pointLights) {
-		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
-		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+		glm::vec3 intersectPoint = ray.origin + ray.direction * ray.t;
+		glm::vec3 vToLight = pointLight.position - intersectPoint;
+		Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
 
-		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
-		const float dist2 = glm::dot(diff, diff);
-		const glm::vec3 Li = pointLight.color / dist2;
-		color *= Li;
+		HitInfo inf;
+		bool intersect = bvh.intersect(toLight, inf);
+		bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
+
+		if (toLight.t > 1 && right) {
+			toLight.t = 1.0f;
+			drawRay(toLight);
+
+			hitInfo.material.shininess = 64;
+			color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
+			color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+			const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
+			const float dist2 = glm::dot(diff, diff);
+			const glm::vec3 Li = pointLight.color / dist2;
+			color *= Li;
+		}
+		else {
+			if (toLight.t > 1) {
+				toLight.t = 1;
+			}
+			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		}
 	}
 
 	return color;
@@ -89,7 +108,7 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 			color = getFinalColorRecursive(scene, bvh, reflectedRay, depth);
 		}
 		else {
-			color = calculateColor(scene, ray, hitInfo);
+			color = calculateColor(scene, bvh, ray, hitInfo);
 		}
 	}
 	drawRay(ray, color);
