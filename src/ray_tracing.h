@@ -6,7 +6,7 @@ struct HitInfo {
     Material material;
 };
 
-const float samples = 100.0f;
+const float samples = 20.0f;
 
 std::vector<glm::vec3> getSpherePoints(const Sphere& sphere, glm::vec3 origin);
 bool intersectRayWithPlane(const Plane& plane, Ray& ray);
