@@ -9,6 +9,40 @@ DISABLE_WARNINGS_POP()
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <random>
+
+std::vector<glm::vec3> getSpherePoints(const Sphere& sphere, glm::vec3 origin) {
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<> dis(-1, 1);
+
+	glm::vec3 normal = origin - sphere.center;
+
+	std::vector<glm::vec3> result;
+	for (int i = 0; i < samples; i++) {
+		double a = dis(gen);
+		double b = dis(gen);
+		if (glm::pow(a, 2) + glm::pow(b, 2) >= 1) {
+			i--;
+			continue;
+		}
+
+		double x = 2 * a * glm::sqrt(1 - glm::pow(a, 2) - glm::pow(b, 2));
+		double y = 2 * b * glm::sqrt(1 - glm::pow(a, 2) - glm::pow(b, 2));
+		double z = 1 - (2 * (glm::pow(a, 2) + glm::pow(b, 2)));
+
+		glm::vec3 point = glm::vec3{ x, y, z } * sphere.radius + sphere.center;
+		float distance = glm::distance(sphere.center, point);
+
+		if (glm::dot(point - sphere.center, normal) >= 0) {
+			result.push_back(point);
+		}
+		else {
+			i--;
+		}
+	}
+	return result;
+}
 
 bool pointInTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& n, const glm::vec3& p)
 {
@@ -17,6 +51,12 @@ bool pointInTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& 
 		glm::dot(n, glm::cross(v2 - v1, p - v1)) >= 0 &&
 		glm::dot(n, glm::cross(v0 - v2, p - v2)) >= 0
 		);
+}
+
+bool rightSideOfPlane(Ray& planeRay, Ray& lightRay, const glm::vec3 planeNormal) {
+	float dotPlane = glm::dot(planeNormal, -planeRay.direction);
+	float dotLight = glm::dot(planeNormal, lightRay.direction);
+	return !((dotPlane > 0) ^ (dotLight > 0));
 }
 
 bool intersectRayWithPlane(const Plane& plane, Ray& ray)
@@ -65,8 +105,23 @@ bool intersectRayWithShape(const Sphere& sphere, Ray& ray, HitInfo& hitInfo)
 
 	float t_in = (-b - glm::sqrt(discriminant)) / (2 * a);
 	float t_out = (-b + glm::sqrt(discriminant)) / (2 * a);
-
-	float t_min = glm::min(t_in, t_out);
+	float t_min = 0.0f;
+	if (t_in < t_out) {
+		if (t_in > 0) {
+			t_min = t_in;
+		}
+		else {
+			t_min = std::numeric_limits<float>::max();
+		}
+	}
+	else {
+		if (t_out > 0) {
+			t_min = t_out;
+		}
+		else {
+			t_min = std::numeric_limits<float>::max();
+		}
+	}
 
 	if (t_min < ray.t) {
 		ray.t = t_min;

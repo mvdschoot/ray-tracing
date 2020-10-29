@@ -34,6 +34,10 @@ const std::filesystem::path outputPath{ OUTPUT_DIR };
 const int RECURSION_DEPTH = 2;
 const int MAX_BVH_LEVEL = 10;
 
+// Ray Tracing options
+bool recursive = true;
+bool interpolate = false;
+
 enum class ViewMode {
 	Rasterization = 0,
 	RayTracing = 1
@@ -57,18 +61,58 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 }
 
-static glm::vec3 calculateColor(const Scene& scene, Ray ray, HitInfo hitInfo)
+static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo) {
+	glm::vec3 color(0.0f);
+
+	glm::vec3 intersectPoint = ray.origin + ray.direction * ray.t;
+	glm::vec3 vToLight = pointLight.position - intersectPoint;
+	Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
+
+	HitInfo inf;
+	bool intersect = bvh.intersect(toLight, inf, interpolate);
+	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
+
+	if (toLight.t > 1 && right) {
+		toLight.t = 1.0f;
+		drawRay(toLight);
+
+		hitInfo.material.shininess = 64;
+		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
+		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
+		const float dist2 = glm::dot(diff, diff);
+		const glm::vec3 Li = pointLight.color / glm::max(dist2, 1.0f);
+		color *= Li;
+	}
+	else {
+		if (toLight.t > 1) {
+			toLight.t = 1;
+		}
+		drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+	}
+	return color;
+}
+
+static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo)
 {
+
 	glm::vec3 color = glm::vec3(0.0f);
 
 	for (const PointLight& pointLight : scene.pointLights) {
-		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
-		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+		color += colorPointLight(pointLight, bvh, ray, hitInfo);
+	}
 
-		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
-		const float dist2 = glm::dot(diff, diff);
-		const glm::vec3 Li = pointLight.color / dist2;
-		color *= Li;
+	for (const SphericalLight& sLight : scene.sphericalLight) {
+		glm::vec3 sumSphereColors(0.0f);
+		glm::vec3 origin = ray.origin + ray.direction * ray.t;
+		auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
+
+		for (glm::vec3 point : points) {
+			PointLight light{ point, sLight.color };
+			sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
+		}
+		sumSphereColors /= samples;
+		color += sumSphereColors;
 	}
 
 	return color;
@@ -81,16 +125,15 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 	glm::vec3 color = glm::vec3(0.0f);
 
 	float bias = 0.00001f;
-
-	if (bvh.intersect(ray, hitInfo)) {
-		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH) {
+	if (bvh.intersect(ray, hitInfo, interpolate)) {
+		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH && recursive) {
 			Ray reflectedRay;
 			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
 			reflectedRay.origin = (ray.origin + ray.direction * ray.t) + reflectedRay.direction * bias;
 			color = getFinalColorRecursive(scene, bvh, reflectedRay, depth);
 		}
 		else {
-			color = calculateColor(scene, ray, hitInfo);
+			color = calculateColor(scene, bvh, ray, hitInfo);
 		}
 	}
 
@@ -178,7 +221,7 @@ int main(int argc, char** argv)
 				bvh = BoundingVolumeHierarchy(&scene, MAX_BVH_LEVEL);
 				if (optDebugRay) {
 					HitInfo dummy{};
-					bvh.intersect(*optDebugRay, dummy);
+					bvh.intersect(*optDebugRay, dummy, interpolate);
 				}
 			}
 		}
@@ -204,6 +247,12 @@ int main(int argc, char** argv)
 			if (debugBVH)
 				ImGui::SliderInt("BVH Level", &bvhDebugLevel, 0, bvh.numLevels() - 1);
 		}
+
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Text("Ray Tracing");
+		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
+		ImGui::Checkbox("Interpolate Normals", &interpolate);
 
 		ImGui::Spacing();
 		ImGui::Separator();
