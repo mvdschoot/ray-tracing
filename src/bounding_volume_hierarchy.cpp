@@ -36,7 +36,9 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 
 	std::sort(primitives.begin(), primitives.end());
 	countLevels(primitives, 0);
-	nodes.resize(glm::pow(2, levels) - 1);
+	Node empty;
+	empty.depth = -1;
+	nodes.resize(glm::pow(2, levels) - 1, empty);
 	build(primitives, 0, 0);
 }
 
@@ -57,9 +59,6 @@ void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth
 {
 	Node node;
 	node.depth = depth;
-	if (levels < depth + 1) {
-		levels = depth + 1;
-	}
 	if (primitives.size() == 1 || depth == MAX_BVH_LEVEL) {
 		node.isLeaf = true;
 		node.aabb = getAABB(primitives);
