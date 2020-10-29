@@ -105,7 +105,7 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 			Ray reflectedRay;
 			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
 			reflectedRay.origin = (ray.origin + ray.direction * ray.t) + reflectedRay.direction * bias;
-			color = getFinalColorRecursive(scene, bvh, reflectedRay, depth);
+			color = calculateColor(scene, bvh, ray, hitInfo) + getFinalColorRecursive(scene, bvh, reflectedRay, depth);
 		}
 		else {
 			color = calculateColor(scene, bvh, ray, hitInfo);
