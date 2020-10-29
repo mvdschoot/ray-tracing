@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+#include <thread>
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
@@ -125,26 +126,46 @@ static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy
 	return getFinalColorRecursive(scene, bvh, ray, 0);
 }
 
-
-static void setOpenGLMatrices(const Trackball& camera);
-static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
-
-// This is the main rendering function. You are free to change this function in any way (including the function signature).
-static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
+static void renderRayTracing_thread(int start, int stop, const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
 {
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-	for (int y = 0; y < windowResolution.y; y++) {
+	for (int y = start; y < stop; y++) {
 		for (int x = 0; x != windowResolution.x; x++) {
-			// NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
 			const glm::vec2 normalizedPixelPos{
 				float(x) / windowResolution.x * 2.0f - 1.0f,
 				float(y) / windowResolution.y * 2.0f - 1.0f
 			};
 			const Ray cameraRay = camera.generateRay(normalizedPixelPos);
-			screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
+			glm::vec3 color = getFinalColor(scene, bvh, cameraRay);
+			screen.setPixel(x, y, color);
 		}
+	}
+}
+
+static void setOpenGLMatrices(const Trackball& camera);
+static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
+
+static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
+{
+	int n_threads = 20;
+	std::vector<std::thread> threads;
+
+	int start = 0;
+	int offset = windowResolution.y;
+
+	if (n_threads > 1 && windowResolution.y % n_threads == 0) {
+		offset /= n_threads;
+	}
+
+	for (int i = 0; i < n_threads; i++) {
+		threads.emplace_back(renderRayTracing_thread, start, start + offset, std::ref(scene), std::ref(camera), std::ref(bvh), std::ref(screen));
+		start += offset;
+	}
+
+	for (std::thread& t : threads) {
+		t.join();
 	}
 }
 
