@@ -31,7 +31,7 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
-const int RECURSION_DEPTH = 2;
+const int RECURSION_DEPTH = 3;
 const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 
 // Ray Tracing options
