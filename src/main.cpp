@@ -32,10 +32,12 @@ const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
 const int RECURSION_DEPTH = 2;
+const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 
 // Ray Tracing options
 bool recursive = false;
 bool interpolate = false;
+int n_threads_idx = 0;
 
 enum class ViewMode {
 	Rasterization = 0,
@@ -149,11 +151,11 @@ static void renderOpenGL(const Scene& scene, const Trackball& camera, int select
 
 static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
 {
-	int n_threads = 20;
 	std::vector<std::thread> threads;
 
 	int start = 0;
 	int offset = windowResolution.y;
+	int n_threads = std::stoi(N_THREAD_VALUES[n_threads_idx]);
 
 	if (n_threads > 1 && windowResolution.y % n_threads == 0) {
 		offset /= n_threads;
@@ -234,7 +236,26 @@ int main(int argc, char** argv)
 				const auto start = clock::now();
 				renderRayTracing(scene, camera, bvh, screen);
 				const auto end = clock::now();
-				std::cout << "Time to render image: " << std::chrono::duration<float, std::milli>(end - start).count() << " milliseconds" << std::endl;
+
+				int n_triangles = 0;
+
+				for (const auto& mesh : scene.meshes) {
+					n_triangles += mesh.triangles.size();
+				}
+
+				int ms = std::chrono::duration<float, std::milli>(end - start).count();
+				int h = ms / (1000 * 60 * 60);
+				ms -= h * (1000 * 60 * 60);
+				int m = ms / (1000 * 60);
+				ms -= m * (1000 * 60);
+				int s = ms / 1000;
+				ms -= s * 1000;
+
+				std::cout << "\nTime to render image: " << std::setfill('0') << std::setw(2) << h << ':' << std::setw(2) << m << ':' << std::setw(2) << s << '.' << std::setw(3) << ms << std::endl;
+				std::cout << "Number of triangles: " << n_triangles << std::endl;
+				std::cout << "- Recursive: " << (recursive ? "yes" : "no") << std::endl;
+				std::cout << "- Interpolated normals: " << (interpolate ? "yes" : "no") << std::endl;
+				std::cout << "- Number of threads: " << N_THREAD_VALUES[n_threads_idx] << std::endl;
 			}
 			screen.writeBitmapToFile(outputPath / "render.bmp");
 		}
@@ -252,6 +273,11 @@ int main(int argc, char** argv)
 		ImGui::Text("Ray Tracing");
 		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
 		ImGui::Checkbox("Interpolate Normals", &interpolate);
+
+		std::vector<const char*> optionsPointers;
+		std::transform(std::begin(N_THREAD_VALUES), std::end(N_THREAD_VALUES), std::back_inserter(optionsPointers),
+			[](const auto& str) { return str.c_str(); });
+		ImGui::Combo("Number of Threads", &n_threads_idx, optionsPointers.data(), static_cast<int>(optionsPointers.size()));
 
 		ImGui::Spacing();
 		ImGui::Separator();
