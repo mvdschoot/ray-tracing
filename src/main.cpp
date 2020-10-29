@@ -30,7 +30,9 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+// Constants
 const int RECURSION_DEPTH = 2;
+const int MAX_BVH_LEVEL = 10;
 
 enum class ViewMode {
 	Rasterization = 0,
@@ -139,7 +141,7 @@ int main(int argc, char** argv)
 	SceneType sceneType{ SceneType::SingleTriangle };
 	std::optional<Ray> optDebugRay;
 	Scene scene = loadScene(sceneType, dataPath);
-	BoundingVolumeHierarchy bvh{ &scene };
+	BoundingVolumeHierarchy bvh{ &scene , MAX_BVH_LEVEL };
 
 	int bvhDebugLevel = 0;
 	bool debugBVH{ false };
@@ -173,7 +175,7 @@ int main(int argc, char** argv)
 				optDebugRay.reset();
 				scene = loadScene(sceneType, dataPath);
 				selectedLight = 0;
-				bvh = BoundingVolumeHierarchy(&scene);
+				bvh = BoundingVolumeHierarchy(&scene, MAX_BVH_LEVEL);
 				if (optDebugRay) {
 					HitInfo dummy{};
 					bvh.intersect(*optDebugRay, dummy);

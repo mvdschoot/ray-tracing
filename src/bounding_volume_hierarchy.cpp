@@ -5,16 +5,18 @@
 #include <glm/vector_relational.hpp>
 #include <iostream>
 
-BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
+BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BVH_LEVEL)
 	: m_pScene(pScene)
 {
-	std::vector<Node> leaves;
+	this->MAX_BVH_LEVEL = MAX_BVH_LEVEL;
+	std::vector<Primitive> primitives;
 
-	for (const auto& mesh : m_pScene->meshes) {
+	for (int i = 0; i != m_pScene->meshes.size(); i++) {
+		Mesh mesh = m_pScene->meshes[i];
 		for (const auto& tri : mesh.triangles) {
-			const auto v0 = mesh.vertices[tri[0]];
-			const auto v1 = mesh.vertices[tri[1]];
-			const auto v2 = mesh.vertices[tri[2]];
+			const auto& v0 = mesh.vertices[tri[0]];
+			const auto& v1 = mesh.vertices[tri[1]];
+			const auto& v2 = mesh.vertices[tri[2]];
 
 			float x_min = glm::min(v0.p.x, glm::min(v1.p.x, v2.p.x));
 			float y_min = glm::min(v0.p.y, glm::min(v1.p.y, v2.p.y));
@@ -24,41 +26,61 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
 			float y_max = glm::max(v0.p.y, glm::max(v1.p.y, v2.p.y));
 			float z_max = glm::max(v0.p.z, glm::max(v1.p.z, v2.p.z));
 
-			Node node;
-			node.aabb = { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
-			leaves.push_back(node);
+			Primitive primitive;
+			primitive.aabb = { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
+			primitive.triangle = tri;
+			primitive.mesh_idx = i;
+			primitives.push_back(primitive);
 		}
 	}
 
-	std::sort(leaves.begin(), leaves.end());
-	build(leaves, 0);
+	std::sort(primitives.begin(), primitives.end());
+	countLevels(primitives, 0);
+	nodes.resize(glm::pow(2, levels) - 1);
+	build(primitives, 0, 0);
 }
 
-void BoundingVolumeHierarchy::build(std::vector<Node> children, int depth)
+void BoundingVolumeHierarchy::countLevels(std::vector<Primitive> primitives, int depth)
+{
+	if (levels < depth + 1) {
+		levels = depth + 1;
+	}
+	if (primitives.size() != 1 && depth != MAX_BVH_LEVEL) {
+		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
+		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
+		countLevels(left_nodes, depth + 1);
+		countLevels(right_nodes, depth + 1);
+	}
+}
+
+void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth, int idx)
 {
 	Node node;
 	node.depth = depth;
 	if (levels < depth + 1) {
 		levels = depth + 1;
 	}
-	if (children.size() == 1) {
+	if (primitives.size() == 1 || depth == MAX_BVH_LEVEL) {
 		node.isLeaf = true;
-		node.aabb = children.front().aabb;
-		nodes.push_back(node);
+		node.aabb = getAABB(primitives);
+		node.primitives = primitives;
+		node.idx = idx;
+		nodes[idx] = node;
 	}
 	else {
-		node.aabb = getAABB(children);
-		nodes.push_back(node);
+		node.aabb = getAABB(primitives);
+		node.idx = idx;
+		nodes[idx] = node;
 
-		std::vector<Node> left_nodes(children.begin(), children.begin() + children.size() / 2);
-		std::vector<Node> right_nodes(children.begin() + children.size() / 2, children.end());
+		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
+		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
 
-		build(left_nodes, depth + 1);
-		build(right_nodes, depth + 1);
+		build(left_nodes, depth + 1, 2 * idx + 1);
+		build(right_nodes, depth + 1, 2 * idx + 2);
 	}
 }
 
-AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Node> nodes) {
+AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Primitive> primitives) {
 	float x_min = std::numeric_limits<float>::max();
 	float y_min = std::numeric_limits<float>::max();
 	float z_min = std::numeric_limits<float>::max();
@@ -68,29 +90,29 @@ AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Node> nodes) {
 	float z_max = std::numeric_limits<float>::min();
 
 
-	for (Node node : nodes) {
-		if (node.aabb.lower.x < x_min) {
-			x_min = node.aabb.lower.x;
+	for (Primitive primitive : primitives) {
+		if (primitive.aabb.lower.x < x_min) {
+			x_min = primitive.aabb.lower.x;
 		}
 
-		if (node.aabb.lower.y < y_min) {
-			y_min = node.aabb.lower.y;
+		if (primitive.aabb.lower.y < y_min) {
+			y_min = primitive.aabb.lower.y;
 		}
 
-		if (node.aabb.lower.z < z_min) {
-			z_min = node.aabb.lower.z;
+		if (primitive.aabb.lower.z < z_min) {
+			z_min = primitive.aabb.lower.z;
 		}
 
-		if (node.aabb.upper.x > x_max) {
-			x_max = node.aabb.upper.x;
+		if (primitive.aabb.upper.x > x_max) {
+			x_max = primitive.aabb.upper.x;
 		}
 
-		if (node.aabb.upper.y > y_max) {
-			y_max = node.aabb.upper.y;
+		if (primitive.aabb.upper.y > y_max) {
+			y_max = primitive.aabb.upper.y;
 		}
 
-		if (node.aabb.upper.z > z_max) {
-			z_max = node.aabb.upper.z;
+		if (primitive.aabb.upper.z > z_max) {
+			z_max = primitive.aabb.upper.z;
 		}
 	}
 	return { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
