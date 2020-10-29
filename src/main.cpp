@@ -55,38 +55,58 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 }
 
+static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo) {
+	glm::vec3 color(0.0f);
+
+	glm::vec3 intersectPoint = ray.origin + ray.direction * ray.t;
+	glm::vec3 vToLight = pointLight.position - intersectPoint;
+	Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
+
+	HitInfo inf;
+	bool intersect = bvh.intersect(toLight, inf);
+	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
+
+	if (toLight.t > 1 && right) {
+		toLight.t = 1.0f;
+		drawRay(toLight);
+
+		hitInfo.material.shininess = 64;
+		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
+		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
+		const float dist2 = glm::dot(diff, diff);
+		const glm::vec3 Li = pointLight.color / glm::max(dist2, 1.0f);
+		color *= Li;
+	}
+	else {
+		if (toLight.t > 1) {
+			toLight.t = 1;
+		}
+		drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+	}
+	return color;
+}
+
 static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo)
 {
 
 	glm::vec3 color = glm::vec3(0.0f);
 
 	for (const PointLight& pointLight : scene.pointLights) {
-		glm::vec3 intersectPoint = ray.origin + ray.direction * ray.t;
-		glm::vec3 vToLight = pointLight.position - intersectPoint;
-		Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
+		color += colorPointLight(pointLight, bvh, ray, hitInfo);
+	}
 
-		HitInfo inf;
-		bool intersect = bvh.intersect(toLight, inf);
-		bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
+	for (const SphericalLight& sLight : scene.sphericalLight) {
+		glm::vec3 sumSphereColors(0.0f);
+		glm::vec3 origin = ray.origin + ray.direction * ray.t;
+		auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
 
-		if (toLight.t > 1 && right) {
-			toLight.t = 1.0f;
-			drawRay(toLight);
-
-			hitInfo.material.shininess = 64;
-			color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
-			color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
-			const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
-			const float dist2 = glm::dot(diff, diff);
-			const glm::vec3 Li = pointLight.color / dist2;
-			color *= Li;
+		for (glm::vec3 point : points) {
+			PointLight light{ point, sLight.color };
+			sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
 		}
-		else {
-			if (toLight.t > 1) {
-				toLight.t = 1;
-			}
-			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
-		}
+		sumSphereColors /= samples;
+		color += sumSphereColors;
 	}
 
 	return color;

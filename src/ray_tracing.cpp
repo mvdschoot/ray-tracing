@@ -9,6 +9,40 @@ DISABLE_WARNINGS_POP()
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <random>
+
+std::vector<glm::vec3> getSpherePoints(const Sphere& sphere, glm::vec3 origin) {
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<> dis(-1, 1);
+
+	glm::vec3 normal = origin - sphere.center;
+
+	std::vector<glm::vec3> result;
+	for (int i = 0; i < samples; i++) {
+		double a = dis(gen);
+		double b = dis(gen);
+		if (glm::pow(a, 2) + glm::pow(b, 2) >= 1) {
+			i--;
+			continue;
+		}
+
+		double x = 2 * a * glm::sqrt(1 - glm::pow(a, 2) - glm::pow(b, 2));
+		double y = 2 * b * glm::sqrt(1 - glm::pow(a, 2) - glm::pow(b, 2));
+		double z = 1 - (2 * (glm::pow(a, 2) + glm::pow(b, 2)));
+
+		glm::vec3 point = glm::vec3{ x, y, z } * sphere.radius + sphere.center;
+		float distance = glm::distance(sphere.center, point);
+
+		if (glm::dot(point - sphere.center, normal) >= 0) {
+			result.push_back(point);
+		}
+		else {
+			i--;
+		}
+	}
+	return result;
+}
 
 bool pointInTriangle(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& n, const glm::vec3& p)
 {
