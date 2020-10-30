@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "ray_tracing.h"
 #include <iostream>
 
 Scene loadScene(SceneType type, const std::filesystem::path& dataDir)
@@ -28,7 +29,7 @@ Scene loadScene(SceneType type, const std::filesystem::path& dataDir)
         // Load a 3D model of a Cornell Box
         auto subMeshes = loadMesh(dataDir / "CornellBox-Mirror-Rotated.obj", true);
         std::move(std::begin(subMeshes), std::end(subMeshes), std::back_inserter(scene.meshes));
-        scene.sphericalLight.push_back(SphericalLight { glm::vec3(0, 0.45f, 0), 0.1f, glm::vec3(1) }); // Light at the top of the box
+        scene.sphericalLight.push_back(SphericalLight{ glm::vec3(0, 0.45f, 0), 0.1f, glm::vec3(1) }); // Light at the top of the box
     } break;
     case Monkey: {
         // Load a 3D model of a Monkey

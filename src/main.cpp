@@ -6,6 +6,7 @@
 #include "screen.h"
 #include "trackball.h"
 #include "window.h"
+#include <thread>
 // Disable compiler warnings in third-party code (which we cannot change).
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
@@ -30,6 +31,18 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+// Constants
+const int MAX_BVH_LEVEL = 15;
+const int RECURSION_DEPTH = 3;
+const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
+
+// Ray Tracing options
+bool recursive = true;
+bool interpolate = false;
+bool hardShadows = true;
+bool softShadows = true;
+int n_threads_idx = 0;
+
 enum class ViewMode {
 	Rasterization = 0,
 	RayTracing = 1
@@ -53,51 +66,138 @@ glm::vec3 specular(const Material& material, const glm::vec3& vertexPos, const g
 
 }
 
+static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo) {
+	glm::vec3 color(0.0f);
 
-// NOTE(Mathijs): separate function to make recursion easier (could also be done with lambda + std::function).
-static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
-{
-	HitInfo hitInfo;
+	glm::vec3 intersectPoint = ray.origin + ray.direction * ray.t;
+	glm::vec3 vToLight = pointLight.position - intersectPoint;
+	Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
 
-	glm::vec3 color = glm::vec3(0.0f);
+	HitInfo inf;
+	bool intersect = bvh.intersect(toLight, inf, interpolate, 0);
+	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
-	if (bvh.intersect(ray, hitInfo)) {
-
-		for (const PointLight& pointLight : scene.pointLights) {
-			color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
-			color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
-
-			const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
-			const float dist2 = glm::dot(diff, diff);
-			const glm::vec3 Li = pointLight.color / dist2;
-			color *= Li;
+	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
+		toLight.t = 1.0f;
+		if (hardShadows || softShadows) {
+			drawRay(toLight);
 		}
 
+		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
+		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
+		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
+		const float dist2 = glm::dot(diff, diff);
+		const glm::vec3 Li = pointLight.color / glm::max(dist2, 1.0f);
+		color *= Li;
 	}
-
-	drawRay(ray, color);
+	else {
+		if (toLight.t > 1) {
+			toLight.t = 1;
+		}
+		if (hardShadows || softShadows) {
+			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		}
+	}
 	return color;
 }
 
-static void setOpenGLMatrices(const Trackball& camera);
-static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
+static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, HitInfo hitInfo)
+{
 
-// This is the main rendering function. You are free to change this function in any way (including the function signature).
-static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
+	glm::vec3 color = glm::vec3(0.0f);
+
+
+	for (const PointLight& pointLight : scene.pointLights) {
+		color += colorPointLight(pointLight, bvh, ray, hitInfo);
+	}
+
+	for (const SphericalLight& sLight : scene.sphericalLight) {
+		glm::vec3 sumSphereColors(0.0f);
+		glm::vec3 origin = ray.origin + ray.direction * ray.t;
+		auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
+
+		for (glm::vec3 point : points) {
+			PointLight light{ point, sLight.color };
+			sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
+		}
+		sumSphereColors /= samples;
+		color += sumSphereColors;
+	}
+
+	return color;
+}
+
+
+static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int depth)
+{
+	HitInfo hitInfo;
+	glm::vec3 color = glm::vec3(0.0f);
+
+	float bias = 0.00001f;
+	if (bvh.intersect(ray, hitInfo, interpolate, 0)) {
+		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH && recursive) {
+			Ray reflectedRay;
+			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
+			reflectedRay.origin = (ray.origin + ray.direction * ray.t) + reflectedRay.direction * bias;
+			color = calculateColor(scene, bvh, ray, hitInfo) + getFinalColorRecursive(scene, bvh, reflectedRay, depth);
+		}
+		else {
+			color = calculateColor(scene, bvh, ray, hitInfo);
+		}
+		drawRay(ray, color);
+	}
+	else {
+		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
+	}
+	return color;
+}
+
+
+static glm::vec3 getFinalColor(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray)
+{
+	return getFinalColorRecursive(scene, bvh, ray, 0);
+}
+
+static void renderRayTracing_thread(int start, int stop, const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
 {
 #ifdef USE_OPENMP
 #pragma omp parallel for
 #endif
-	for (int y = 0; y < windowResolution.y; y++) {
+	for (int y = start; y < stop; y++) {
 		for (int x = 0; x != windowResolution.x; x++) {
-			// NOTE: (-1, -1) at the bottom left of the screen, (+1, +1) at the top right of the screen.
 			const glm::vec2 normalizedPixelPos{
 				float(x) / windowResolution.x * 2.0f - 1.0f,
 				float(y) / windowResolution.y * 2.0f - 1.0f
 			};
 			const Ray cameraRay = camera.generateRay(normalizedPixelPos);
-			screen.setPixel(x, y, getFinalColor(scene, bvh, cameraRay));
+			glm::vec3 color = getFinalColor(scene, bvh, cameraRay);
+			screen.setPixel(x, y, color);
 		}
+	}
+}
+
+static void setOpenGLMatrices(const Trackball& camera);
+static void renderOpenGL(const Scene& scene, const Trackball& camera, int selectedLight);
+
+static void renderRayTracing(const Scene& scene, const Trackball& camera, const BoundingVolumeHierarchy& bvh, Screen& screen)
+{
+	std::vector<std::thread> threads;
+
+	int start = 0;
+	int offset = windowResolution.y;
+	int n_threads = std::stoi(N_THREAD_VALUES[n_threads_idx]);
+
+	if (n_threads > 1 && windowResolution.y % n_threads == 0) {
+		offset /= n_threads;
+	}
+
+	for (int i = 0; i < n_threads; i++) {
+		threads.emplace_back(renderRayTracing_thread, start, start + offset, std::ref(scene), std::ref(camera), std::ref(bvh), std::ref(screen));
+		start += offset;
+	}
+
+	for (std::thread& t : threads) {
+		t.join();
 	}
 }
 
@@ -115,7 +215,7 @@ int main(int argc, char** argv)
 	SceneType sceneType{ SceneType::SingleTriangle };
 	std::optional<Ray> optDebugRay;
 	Scene scene = loadScene(sceneType, dataPath);
-	BoundingVolumeHierarchy bvh{ &scene };
+	BoundingVolumeHierarchy bvh{ &scene , MAX_BVH_LEVEL };
 
 	int bvhDebugLevel = 0;
 	bool debugBVH{ false };
@@ -149,10 +249,10 @@ int main(int argc, char** argv)
 				optDebugRay.reset();
 				scene = loadScene(sceneType, dataPath);
 				selectedLight = 0;
-				bvh = BoundingVolumeHierarchy(&scene);
+				bvh = BoundingVolumeHierarchy(&scene, MAX_BVH_LEVEL);
 				if (optDebugRay) {
 					HitInfo dummy{};
-					bvh.intersect(*optDebugRay, dummy);
+					bvh.intersect(*optDebugRay, dummy, interpolate, 0);
 				}
 			}
 		}
@@ -166,7 +266,29 @@ int main(int argc, char** argv)
 				const auto start = clock::now();
 				renderRayTracing(scene, camera, bvh, screen);
 				const auto end = clock::now();
-				std::cout << "Time to render image: " << std::chrono::duration<float, std::milli>(end - start).count() << " milliseconds" << std::endl;
+
+				int n_triangles = 0;
+
+				for (const auto& mesh : scene.meshes) {
+					n_triangles += mesh.triangles.size();
+				}
+
+				int ms = std::chrono::duration<float, std::milli>(end - start).count();
+				int h = ms / (1000 * 60 * 60);
+				ms -= h * (1000 * 60 * 60);
+				int m = ms / (1000 * 60);
+				ms -= m * (1000 * 60);
+				int s = ms / 1000;
+				ms -= s * 1000;
+
+				std::cout << "\nTime to render image: " << std::setfill('0') << std::setw(2) << h << ':' << std::setw(2) << m << ':' << std::setw(2) << s << '.' << std::setw(3) << ms << std::endl;
+				std::cout << "Number of triangles: " << n_triangles << std::endl;
+				std::cout << "Number of BVH levels: " << bvh.levels << std::endl;
+				std::cout << "- Recursive: " << (recursive ? "yes" : "no") << std::endl;
+				std::cout << "- Interpolated normals: " << (interpolate ? "yes" : "no") << std::endl;
+				std::cout << "- Hard Shadows: " << (hardShadows ? "yes" : "no") << std::endl;
+				std::cout << "- Soft Shadows: " << (softShadows ? "yes" : "no") << std::endl;
+				std::cout << "- Number of threads: " << N_THREAD_VALUES[n_threads_idx] << std::endl;
 			}
 			screen.writeBitmapToFile(outputPath / "render.bmp");
 		}
@@ -178,6 +300,19 @@ int main(int argc, char** argv)
 			if (debugBVH)
 				ImGui::SliderInt("BVH Level", &bvhDebugLevel, 0, bvh.numLevels() - 1);
 		}
+
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Text("Ray Tracing");
+		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
+		ImGui::Checkbox("Interpolate Normals", &interpolate);
+		ImGui::Checkbox("Hard Shadows", &hardShadows);
+		ImGui::Checkbox("Soft Shadows", &softShadows);
+
+		std::vector<const char*> optionsPointers;
+		std::transform(std::begin(N_THREAD_VALUES), std::end(N_THREAD_VALUES), std::back_inserter(optionsPointers),
+			[](const auto& str) { return str.c_str(); });
+		ImGui::Combo("Number of Threads", &n_threads_idx, optionsPointers.data(), static_cast<int>(optionsPointers.size()));
 
 		ImGui::Spacing();
 		ImGui::Separator();
