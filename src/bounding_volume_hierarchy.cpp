@@ -5,6 +5,7 @@
 #include <glm/vector_relational.hpp>
 #include <iostream>
 
+//Primitive sorting function
 bool xSort(Primitive a, Primitive b) {
 	float centroid = (a.aabb.upper.x + a.aabb.lower.x) / 2.0f;
 	float centroid_other = (b.aabb.upper.x + b.aabb.lower.x) / 2.0f;
@@ -57,18 +58,12 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 		primitive.isSphere = true;
 		primitives.push_back(primitive);
 	}
-
-	sortPrimitives(primitives);
 	countLevels(primitives, 0);
 
 	Node empty;
 	empty.depth = -1;
 	nodes.resize(glm::pow(2, levels) - 1, empty);
 	build(primitives, 0, 0);
-}
-
-void BoundingVolumeHierarchy::sortPrimitives(std::vector<Primitive>& primitives) {
-	int a = 0;
 }
 
 void BoundingVolumeHierarchy::countLevels(std::vector<Primitive> primitives, int depth)
@@ -111,14 +106,14 @@ void BoundingVolumeHierarchy::SAHsplit(AxisAlignedBox aabb, std::vector<Primitiv
 	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
 	float costz = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
 
-	if (costx > costy && costx > costz) {
+	if (costx < costy && costx < costz) {
 		std::sort(primitives.begin(), primitives.end(), xSort);
 	}
-	else if (costy > costx && costy > costz) {
+	else if (costy < costx && costy < costz) {
 		std::sort(primitives.begin(), primitives.end(), ySort);
 	}
-	else if (costz > costx && costz > costy) {
-		std::sort(primitives.begin(), primitives.end(), ySort);
+	else if (costz < costx && costz < costy) {
+		std::sort(primitives.begin(), primitives.end(), zSort);
 	}
 }
 

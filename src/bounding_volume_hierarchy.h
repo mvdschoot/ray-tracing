@@ -10,14 +10,6 @@ struct Primitive
 	int mesh_idx;
 	AxisAlignedBox aabb;
 	bool isSphere;
-
-	/*bool operator < (const Primitive& other) const
-	{
-		float centroid = (aabb.upper.x + aabb.lower.x) / 2.0f;
-		float centroid_other = (other.aabb.upper.x + other.aabb.lower.x) / 2.0f;
-
-		return (centroid < centroid_other);
-	}*/
 };
 
 class BoundingVolumeHierarchy {
@@ -58,7 +50,6 @@ public:
 	bool intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const;
 private:
 	bool AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const;
-	void sortPrimitives(std::vector<Primitive>& primitives);
 	void SAHsplit(AxisAlignedBox aabb, std::vector<Primitive> primitives);
 	float getVolume(AxisAlignedBox aabb);
 
