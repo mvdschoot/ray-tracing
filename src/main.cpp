@@ -39,8 +39,7 @@ const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 // Ray Tracing options
 bool recursive = true;
 bool interpolate = false;
-bool hardShadows = true;
-bool softShadows = true;
+bool shadows = true;
 int n_threads_idx = 0;
 
 enum class ViewMode {
@@ -77,9 +76,9 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 	bool intersect = bvh.intersect(toLight, inf, interpolate, 0);
 	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
-	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
+	if ((toLight.t > 1 && right) || !shadows) {
 		toLight.t = 1.0f;
-		if ((hardShadows || softShadows) != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
+		if (shadows != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
 			drawRay(toLight);
 		}
 
@@ -94,7 +93,7 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 		if (toLight.t > 1) {
 			toLight.t = 1;
 		}
-		if ((hardShadows || softShadows) != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
+		if (shadows != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
 			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
 		}
 	}
@@ -286,8 +285,7 @@ int main(int argc, char** argv)
 				std::cout << "Number of BVH levels: " << bvh.levels << std::endl;
 				std::cout << "- Recursive: " << (recursive ? "yes" : "no") << std::endl;
 				std::cout << "- Interpolated normals: " << (interpolate ? "yes" : "no") << std::endl;
-				std::cout << "- Hard Shadows: " << (hardShadows ? "yes" : "no") << std::endl;
-				std::cout << "- Soft Shadows: " << (softShadows ? "yes" : "no") << std::endl;
+				std::cout << "- Shadows: " << (shadows ? "yes" : "no") << std::endl;
 				std::cout << "- Number of threads: " << N_THREAD_VALUES[n_threads_idx] << std::endl;
 			}
 			screen.writeBitmapToFile(outputPath / "render.bmp");
@@ -306,8 +304,7 @@ int main(int argc, char** argv)
 		ImGui::Text("Ray Tracing");
 		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
 		ImGui::Checkbox("Interpolate Normals", &interpolate);
-		ImGui::Checkbox("Hard Shadows", &hardShadows);
-		ImGui::Checkbox("Soft Shadows", &softShadows);
+		ImGui::Checkbox("Shadows", &shadows);
 
 		std::vector<const char*> optionsPointers;
 		std::transform(std::begin(N_THREAD_VALUES), std::end(N_THREAD_VALUES), std::back_inserter(optionsPointers),
