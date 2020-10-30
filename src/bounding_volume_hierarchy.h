@@ -4,19 +4,55 @@
 #include <array>
 #include <gsl-lite/gsl-lite.hpp>
 
-class BoundingVolumeHierarchy {
-public:
-    BoundingVolumeHierarchy(Scene* pScene);
+struct Primitive
+{
+	unsigned int triangle;
+	int mesh_idx;
+	AxisAlignedBox aabb;
+	bool isSphere;
+};
 
-    // Use this function to visualize your BVH. This can be useful for debugging.
-    void debugDraw(int level);
-    int numLevels() const;
+class BoundingVolumeHierarchy {
+
+	struct Node
+	{
+		AxisAlignedBox aabb;
+		int depth;
+		int idx;
+
+		bool isLeaf = false;
+		std::vector<Primitive> primitives;
+	};
+
+
+
+public:
+	BoundingVolumeHierarchy(Scene* pScene, const int MAX_BVH_LEVEL);
+
+	// Use this function to visualize your BVH. This can be useful for debugging.
+	void debugDraw(int level);
+	int numLevels();
+	int levels = std::numeric_limits<float>::min();
+	int MAX_BVH_LEVEL;
+
+	std::vector<Node> nodes;
+
+	void build(std::vector<Primitive> primitives, int depth, int idx);
+	void countLevels(std::vector<Primitive> primitives, int depth);
+	AxisAlignedBox getAABB(std::vector<Primitive> primitives);
+	AxisAlignedBox getAABB(Sphere sphere);
+
 
     // Return true if something is hit, returns false otherwise.
     // Only find hits if they are closer than t stored in the ray and the intersection
     // is on the correct side of the origin (the new t >= 0).
-    bool intersect(Ray& ray, HitInfo& hitInfo, bool interpolate) const;
-
+    bool intersect(Ray& ray, HitInfo& hitInfo, bool interpolate, int idx) const;
+	bool intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const;
 private:
-    Scene* m_pScene;
+	bool AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const;
+	void SAHsplit(AxisAlignedBox aabb, std::vector<Primitive> primitives);
+	float getVolume(AxisAlignedBox aabb);
+
+	Scene* m_pScene;
 };
+

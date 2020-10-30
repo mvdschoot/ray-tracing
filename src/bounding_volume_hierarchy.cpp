@@ -5,46 +5,313 @@
 #include <glm/vector_relational.hpp>
 #include <iostream>
 
-BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene)
+//Primitive sorting function
+bool xSort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.x + a.aabb.lower.x) / 2.0f;
+	float centroid_other = (b.aabb.upper.x + b.aabb.lower.x) / 2.0f;
+	return (centroid < centroid_other);
+}
+bool ySort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.y + a.aabb.lower.y) / 2.0f;
+	float centroid_other = (b.aabb.upper.y + b.aabb.lower.y) / 2.0f;
+	return (centroid < centroid_other);
+}
+bool zSort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.z + a.aabb.lower.z) / 2.0f;
+	float centroid_other = (b.aabb.upper.z + b.aabb.lower.z) / 2.0f;
+	return (centroid < centroid_other);
+}
+
+BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BVH_LEVEL)
 	: m_pScene(pScene)
 {
+	this->MAX_BVH_LEVEL = MAX_BVH_LEVEL;
+
+	std::vector<Primitive> primitives;
+	int i = 0;
+	for (; i != m_pScene->meshes.size(); i++) {
+		Mesh mesh = m_pScene->meshes[i];
+		for (int x = 0; x < mesh.triangles.size(); x++) {
+			const auto& v0 = mesh.vertices[mesh.triangles[x][0]];
+			const auto& v1 = mesh.vertices[mesh.triangles[x][1]];
+			const auto& v2 = mesh.vertices[mesh.triangles[x][2]];
+
+			float x_min = glm::min(v0.p.x, glm::min(v1.p.x, v2.p.x));
+			float y_min = glm::min(v0.p.y, glm::min(v1.p.y, v2.p.y));
+			float z_min = glm::min(v0.p.z, glm::min(v1.p.z, v2.p.z));
+
+			float x_max = glm::max(v0.p.x, glm::max(v1.p.x, v2.p.x));
+			float y_max = glm::max(v0.p.y, glm::max(v1.p.y, v2.p.y));
+			float z_max = glm::max(v0.p.z, glm::max(v1.p.z, v2.p.z));
+
+			Primitive primitive;
+			primitive.aabb = { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
+			primitive.triangle = x;
+			primitive.mesh_idx = i;
+			primitive.isSphere = false;
+			primitives.push_back(primitive);
+		}
+	} for (int x = 0; x < m_pScene->spheres.size(); x++) {
+		Primitive primitive;
+		primitive.aabb = getAABB(m_pScene->spheres[x]);
+		primitive.mesh_idx = x;
+		primitive.isSphere = true;
+		primitives.push_back(primitive);
+	}
+	countLevels(primitives, 0);
+
+	Node empty;
+	empty.depth = -1;
+	nodes.resize(glm::pow(2, levels) - 1, empty);
+	build(primitives, 0, 0);
 }
+
+void BoundingVolumeHierarchy::countLevels(std::vector<Primitive> primitives, int depth)
+{
+	if (levels < depth + 1) {
+		levels = depth + 1;
+	}
+	if (primitives.size() != 1 && depth != MAX_BVH_LEVEL) {
+		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
+		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
+		countLevels(left_nodes, depth + 1);
+		countLevels(right_nodes, depth + 1);
+	}
+}
+
+float BoundingVolumeHierarchy::getVolume(AxisAlignedBox aabb) {
+	float dx = aabb.upper.x - aabb.lower.x;
+	float dy = aabb.upper.y - aabb.lower.y;
+	float dz = aabb.upper.z - aabb.lower.z;
+	return dx * dy * dz;
+}
+
+void BoundingVolumeHierarchy::SAHsplit(AxisAlignedBox aabb, std::vector<Primitive> primitives){ 
+	std::vector<Primitive> l, r;
+	//x split
+	std::sort(primitives.begin(), primitives.end(), xSort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costx = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	//y split
+	std::sort(primitives.begin(), primitives.end(), ySort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costy = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	//z split
+	std::sort(primitives.begin(), primitives.end(), zSort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costz = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	if (costx < costy && costx < costz) {
+		std::sort(primitives.begin(), primitives.end(), xSort);
+	}
+	else if (costy < costx && costy < costz) {
+		std::sort(primitives.begin(), primitives.end(), ySort);
+	}
+	else if (costz < costx && costz < costy) {
+		std::sort(primitives.begin(), primitives.end(), zSort);
+	}
+}
+
+void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth, int idx)
+{
+	Node node;
+	node.depth = depth;
+	if (primitives.size() == 1 || depth == MAX_BVH_LEVEL) {
+		node.isLeaf = true;
+		node.aabb = getAABB(primitives);
+		node.primitives = primitives;
+		node.idx = idx;
+		nodes[idx] = node;
+	}
+	else {
+		 
+		node.aabb = getAABB(primitives);
+		node.idx = idx;
+		nodes[idx] = node;
+
+		SAHsplit(node.aabb, primitives);
+		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
+		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
+
+		if(!left_nodes.empty())
+			build(left_nodes, depth + 1, 2 * idx + 1);
+		if(!right_nodes.empty())
+			build(right_nodes, depth + 1, 2 * idx + 2);
+	}
+}
+
+AxisAlignedBox BoundingVolumeHierarchy::getAABB(Sphere sphere) {
+	glm::vec3 lower = sphere.center - glm::vec3(sphere.radius);
+	glm::vec3 upper = sphere.center + glm::vec3(sphere.radius);
+	return AxisAlignedBox{ lower, upper };
+}
+
+AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Primitive> primitives) {
+	float bias = 0.001;
+
+	float x_min = std::numeric_limits<float>::max();
+	float y_min = std::numeric_limits<float>::max();
+	float z_min = std::numeric_limits<float>::max();
+
+	float x_max = std::numeric_limits<float>::min();
+	float y_max = std::numeric_limits<float>::min();
+	float z_max = std::numeric_limits<float>::min();
+
+
+	for (Primitive& primitive : primitives) {
+		if (primitive.aabb.lower.x < x_min) {
+			x_min = primitive.aabb.lower.x;
+		}
+
+		if (primitive.aabb.lower.y < y_min) {
+			y_min = primitive.aabb.lower.y;
+		}
+
+		if (primitive.aabb.lower.z < z_min) {
+			z_min = primitive.aabb.lower.z;
+		}
+
+		if (primitive.aabb.upper.x > x_max) {
+			x_max = primitive.aabb.upper.x;
+		}
+
+		if (primitive.aabb.upper.y > y_max) {
+			y_max = primitive.aabb.upper.y;
+		}
+
+		if (primitive.aabb.upper.z > z_max) {
+			z_max = primitive.aabb.upper.z;
+		}
+	}
+	return { glm::vec3(x_min - bias, y_min - bias, z_min - bias), glm::vec3(x_max + bias, y_max + bias, z_max + bias) };
+}
+
 
 // Use this function to visualize your BVH. This can be useful for debugging. Use the functions in
 // draw.h to draw the various shapes. We have extended the AABB draw functions to support wireframe
 // mode, arbitrary colors and transparency.
 void BoundingVolumeHierarchy::debugDraw(int level)
 {
-
-	// Draw the AABB as a transparent green box.
-	//AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-	//drawShape(aabb, DrawMode::Filled, glm::vec3(0.0f, 1.0f, 0.0f), 0.2f);
-
-	// Draw the AABB as a (white) wireframe box.
-	AxisAlignedBox aabb{ glm::vec3(-0.05f), glm::vec3(0.05f, 1.05f, 1.05f) };
-	//drawAABB(aabb, DrawMode::Wireframe);
-	drawAABB(aabb, DrawMode::Filled, glm::vec3(0.05f, 1.0f, 0.05f), 0.1f);
+	for (Node node : nodes) {
+		if (node.depth == level) {
+			drawAABB(node.aabb, DrawMode::Wireframe, glm::vec3(0.05f, 1.05f, 1.05f), 0.5f);
+		}
+	}
 }
 
-int BoundingVolumeHierarchy::numLevels() const
+int BoundingVolumeHierarchy::numLevels()
 {
-	return 5;
+	return levels;
 }
+
+
+void swap(float& a, float& b) {
+	float temp = a;
+	a = b;
+	b = temp;
+}
+
+//Code from
+//h*ttps://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
+
+bool BoundingVolumeHierarchy::AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const {
+	float tmin = (aabb.lower.x - ray.origin.x) / ray.direction.x;
+	float tmax = (aabb.upper.x - ray.origin.x) / ray.direction.x;
+
+	if (tmin > tmax) swap(tmin, tmax);
+
+	float tymin = (aabb.lower.y - ray.origin.y) / ray.direction.y;
+	float tymax = (aabb.upper.y - ray.origin.y) / ray.direction.y;
+
+	if (tymin > tymax) swap(tymin, tymax);
+
+	if ((tmin > tymax) || (tymin > tmax))
+		return false;
+
+	if (tymin > tmin)
+		tmin = tymin;
+
+	if (tymax < tmax)
+		tmax = tymax;
+
+	float tzmin = (aabb.lower.z - ray.origin.z) / ray.direction.z;
+	float tzmax = (aabb.upper.z - ray.origin.z) / ray.direction.z;
+
+	if (tzmin > tzmax) swap(tzmin, tzmax);
+
+	if ((tmin > tzmax) || (tzmin > tmax))
+		return false;
+
+	if (tzmin > tmin)
+		tmin = tzmin;
+
+	if (tzmax < tmax)
+		tmax = tzmax;
+	return true;
+}
+
+bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpolate, int idx) const {
+	if (nodes[idx].depth == -1)
+		return false;
+
+	if (!AABBIntersect(ray, nodes[idx].aabb)) 
+		return false;
+
+	if (nodes[idx].isLeaf) {
+		Node node = nodes[idx];
+		return intersectPrimitive(node, ray, hitInfo, interpolate);
+	}
+
+	Ray left = ray, right = ray;
+	HitInfo leftInf, rightInf;
+	intersect(left, leftInf, interpolate, 2 * idx + 1);
+	intersect(right, rightInf, interpolate, 2 * idx + 2);
+
+	//Return the corrent outcome
+	if (left.t == std::numeric_limits<float>::max() && right.t == std::numeric_limits<float>::max()) {
+		return false;
+	}
+	else if (left.t < right.t) {
+		ray = left;
+		hitInfo = leftInf;
+	} else {
+		ray = right;
+		hitInfo = rightInf;
+	}
+
+	return true;
+}
+
 
 // Return true if something is hit, returns false otherwise. Only find hits if they are closer than t stored
 // in the ray and if the intersection is on the correct side of the origin (the new t >= 0). Replace the code
 // by a bounding volume hierarchy acceleration structure as described in the assignment. You can change any
 // file you like, including bounding_volume_hierarchy.h .
-bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpolate) const
+
+
+bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const
 {
 	bool hit = false;
 	float t = ray.t;
 	// Intersect with all triangles of all meshes.
-	for (const auto& mesh : m_pScene->meshes) {
-		for (const auto& tri : mesh.triangles) {
-			const auto& v0 = mesh.vertices[tri[0]];
-			const auto& v1 = mesh.vertices[tri[1]];
-			const auto& v2 = mesh.vertices[tri[2]];
+	for (const Primitive& primitive : node.primitives) {
+		if (primitive.isSphere) {
+			Sphere sphere = m_pScene->spheres[primitive.mesh_idx];
+			hit |= intersectRayWithShape(sphere, ray, hitInfo);
+			if (ray.t < t && t > 0) {
+				hitInfo.material = sphere.material;
+				hitInfo.normal = glm::normalize(-ray.direction);
+			}
+		}
+		else {
+			const auto& v0 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][0]];
+			const auto& v1 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][1]];
+			const auto& v2 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][2]];
 			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
 			if (ray.t < t && t > 0) {
 				if (interpolate) {
@@ -58,21 +325,11 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpo
 				else {
 					hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
 				}
-				hitInfo.material = mesh.material;
+				hitInfo.material = m_pScene->meshes[primitive.mesh_idx].material;
 				t = ray.t;
 			}
 		}
 	}
 	ray.t = t;
-
-	// Intersect with spheres.
-	for (const auto& sphere : m_pScene->spheres) {
-		bool tempHit = intersectRayWithShape(sphere, ray, hitInfo);
-		if (tempHit) {
-			hitInfo.normal = glm::normalize((ray.origin + ray.direction * ray.t) - sphere.center);
-			hitInfo.material = sphere.material;
-			hit = true;
-		}
-	}
 	return hit;
 }

@@ -31,6 +31,8 @@ constexpr glm::ivec2 windowResolution{ 800, 800 };
 const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
+// Constants
+const int MAX_BVH_LEVEL = 15;
 const int RECURSION_DEPTH = 3;
 const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 
@@ -72,7 +74,7 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 	Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
 
 	HitInfo inf;
-	bool intersect = bvh.intersect(toLight, inf, interpolate);
+	bool intersect = bvh.intersect(toLight, inf, interpolate, 0);
 	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
 	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
@@ -81,7 +83,6 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 			drawRay(toLight);
 		}
 
-		hitInfo.material.shininess = 64;
 		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
 		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
 		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
@@ -130,11 +131,10 @@ static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarch
 static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolumeHierarchy& bvh, Ray ray, int depth)
 {
 	HitInfo hitInfo;
-
 	glm::vec3 color = glm::vec3(0.0f);
 
 	float bias = 0.00001f;
-	if (bvh.intersect(ray, hitInfo, interpolate)) {
+	if (bvh.intersect(ray, hitInfo, interpolate, 0)) {
 		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH && recursive) {
 			Ray reflectedRay;
 			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
@@ -149,7 +149,6 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 	else {
 		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
 	}
-
 	return color;
 }
 
@@ -216,7 +215,7 @@ int main(int argc, char** argv)
 	SceneType sceneType{ SceneType::SingleTriangle };
 	std::optional<Ray> optDebugRay;
 	Scene scene = loadScene(sceneType, dataPath);
-	BoundingVolumeHierarchy bvh{ &scene };
+	BoundingVolumeHierarchy bvh{ &scene , MAX_BVH_LEVEL };
 
 	int bvhDebugLevel = 0;
 	bool debugBVH{ false };
@@ -250,10 +249,10 @@ int main(int argc, char** argv)
 				optDebugRay.reset();
 				scene = loadScene(sceneType, dataPath);
 				selectedLight = 0;
-				bvh = BoundingVolumeHierarchy(&scene);
+				bvh = BoundingVolumeHierarchy(&scene, MAX_BVH_LEVEL);
 				if (optDebugRay) {
 					HitInfo dummy{};
-					bvh.intersect(*optDebugRay, dummy, interpolate);
+					bvh.intersect(*optDebugRay, dummy, interpolate, 0);
 				}
 			}
 		}
@@ -284,6 +283,7 @@ int main(int argc, char** argv)
 
 				std::cout << "\nTime to render image: " << std::setfill('0') << std::setw(2) << h << ':' << std::setw(2) << m << ':' << std::setw(2) << s << '.' << std::setw(3) << ms << std::endl;
 				std::cout << "Number of triangles: " << n_triangles << std::endl;
+				std::cout << "Number of BVH levels: " << bvh.levels << std::endl;
 				std::cout << "- Recursive: " << (recursive ? "yes" : "no") << std::endl;
 				std::cout << "- Interpolated normals: " << (interpolate ? "yes" : "no") << std::endl;
 				std::cout << "- Hard Shadows: " << (hardShadows ? "yes" : "no") << std::endl;
