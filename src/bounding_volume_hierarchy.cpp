@@ -279,15 +279,5 @@ bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& h
 		}
 	}
 	ray.t = t;
-
-	// Intersect with spheres.
-	for (const auto& sphere : m_pScene->spheres) {
-		bool tempHit = intersectRayWithShape(sphere, ray, hitInfo);
-		if (tempHit) {
-			hitInfo.normal = glm::normalize((ray.origin + ray.direction * ray.t) - sphere.center);
-			hitInfo.material = sphere.material;
-			hit = true;
-		}
-	}
 	return hit;
 }
