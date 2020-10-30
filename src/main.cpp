@@ -34,7 +34,9 @@ const int RECURSION_DEPTH = 2;
 
 // Ray Tracing options
 bool recursive = true;
-bool interpolate = false;
+bool interpolate = false; 
+bool hardShadows = true;
+bool softShadows = true;
 
 enum class ViewMode {
 	Rasterization = 0,
@@ -96,21 +98,25 @@ static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarch
 
 	glm::vec3 color = glm::vec3(0.0f);
 
-	for (const PointLight& pointLight : scene.pointLights) {
-		color += colorPointLight(pointLight, bvh, ray, hitInfo);
+	if (hardShadows) {
+		for (const PointLight& pointLight : scene.pointLights) {
+			color += colorPointLight(pointLight, bvh, ray, hitInfo);
+		}
 	}
 
-	for (const SphericalLight& sLight : scene.sphericalLight) {
-		glm::vec3 sumSphereColors(0.0f);
-		glm::vec3 origin = ray.origin + ray.direction * ray.t;
-		auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
+	if (softShadows) {
+		for (const SphericalLight& sLight : scene.sphericalLight) {
+			glm::vec3 sumSphereColors(0.0f);
+			glm::vec3 origin = ray.origin + ray.direction * ray.t;
+			auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
 
-		for (glm::vec3 point : points) {
-			PointLight light{ point, sLight.color };
-			sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
+			for (glm::vec3 point : points) {
+				PointLight light{ point, sLight.color };
+				sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
+			}
+			sumSphereColors /= samples;
+			color += sumSphereColors;
 		}
-		sumSphereColors /= samples;
-		color += sumSphereColors;
 	}
 
 	return color;
@@ -251,6 +257,8 @@ int main(int argc, char** argv)
 		ImGui::Text("Ray Tracing");
 		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
 		ImGui::Checkbox("Interpolate Normals", &interpolate);
+		ImGui::Checkbox("Hard shadows", &hardShadows);
+		ImGui::Checkbox("Soft shadows", &softShadows);
 
 		ImGui::Spacing();
 		ImGui::Separator();
