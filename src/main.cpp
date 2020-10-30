@@ -34,7 +34,7 @@ const int RECURSION_DEPTH = 2;
 
 // Ray Tracing options
 bool recursive = true;
-bool interpolate = false; 
+bool interpolate = false;
 bool hardShadows = true;
 bool softShadows = true;
 
@@ -72,9 +72,11 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 	bool intersect = bvh.intersect(toLight, inf, interpolate);
 	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
-	if (toLight.t > 1 && right) {
+	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
 		toLight.t = 1.0f;
-		drawRay(toLight);
+		if (hardShadows || softShadows) {
+			drawRay(toLight);
+		}
 
 		hitInfo.material.shininess = 64;
 		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
@@ -88,7 +90,9 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 		if (toLight.t > 1) {
 			toLight.t = 1;
 		}
-		drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		if (hardShadows || softShadows) {
+			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		}
 	}
 	return color;
 }
@@ -98,25 +102,22 @@ static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarch
 
 	glm::vec3 color = glm::vec3(0.0f);
 
-	if (hardShadows) {
-		for (const PointLight& pointLight : scene.pointLights) {
-			color += colorPointLight(pointLight, bvh, ray, hitInfo);
-		}
+
+	for (const PointLight& pointLight : scene.pointLights) {
+		color += colorPointLight(pointLight, bvh, ray, hitInfo);
 	}
 
-	if (softShadows) {
-		for (const SphericalLight& sLight : scene.sphericalLight) {
-			glm::vec3 sumSphereColors(0.0f);
-			glm::vec3 origin = ray.origin + ray.direction * ray.t;
-			auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
+	for (const SphericalLight& sLight : scene.sphericalLight) {
+		glm::vec3 sumSphereColors(0.0f);
+		glm::vec3 origin = ray.origin + ray.direction * ray.t;
+		auto points = getSpherePoints(Sphere{ sLight.position, sLight.radius, Material{} }, origin);
 
-			for (glm::vec3 point : points) {
-				PointLight light{ point, sLight.color };
-				sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
-			}
-			sumSphereColors /= samples;
-			color += sumSphereColors;
+		for (glm::vec3 point : points) {
+			PointLight light{ point, sLight.color };
+			sumSphereColors += colorPointLight(light, bvh, ray, hitInfo);
 		}
+		sumSphereColors /= samples;
+		color += sumSphereColors;
 	}
 
 	return color;
@@ -140,8 +141,12 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 		else {
 			color = calculateColor(scene, bvh, ray, hitInfo);
 		}
+		drawRay(ray, color);
 	}
-	drawRay(ray, color);
+	else {
+		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
+	}
+
 	return color;
 }
 
