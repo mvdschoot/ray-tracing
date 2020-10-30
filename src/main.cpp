@@ -79,7 +79,7 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 
 	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
 		toLight.t = 1.0f;
-		if (hardShadows || softShadows) {
+		if ((hardShadows || softShadows) != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
 			drawRay(toLight);
 		}
 
@@ -94,7 +94,7 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 		if (toLight.t > 1) {
 			toLight.t = 1;
 		}
-		if (hardShadows || softShadows) {
+		if ((hardShadows || softShadows) != (recursive && hitInfo.material.ks != glm::vec3(0.0f))) {
 			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
 		}
 	}
