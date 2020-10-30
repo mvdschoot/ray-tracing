@@ -9,15 +9,10 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 	: m_pScene(pScene)
 {
 	this->MAX_BVH_LEVEL = MAX_BVH_LEVEL;
-	int currentIdx = 0;
-	for(int x = 0; x < MAX_BVH_LEVEL; x++) {
-		currentIdx * 2 + 1;
-	}
-	maxLvlIdx = currentIdx;
 
 	std::vector<Primitive> primitives;
-
-	for (int i = 0; i != m_pScene->meshes.size(); i++) {
+	int i = 0;
+	for (; i != m_pScene->meshes.size(); i++) {
 		Mesh mesh = m_pScene->meshes[i];
 		for (const auto& tri : mesh.triangles) {
 			const auto& v0 = mesh.vertices[tri[0]];
@@ -34,14 +29,25 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 
 			Primitive primitive;
 			primitive.aabb = { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
-			primitive.triangle = tri;
+			primitive.triangle.push_back(v0);
+			primitive.triangle.push_back(v1);
+			primitive.triangle.push_back(v2);
 			primitive.mesh_idx = i;
+			primitive.material = mesh.material;
 			primitives.push_back(primitive);
 		}
+	} for (Sphere x : m_pScene->spheres) {
+		Primitive primitive;
+		primitive.aabb = getAABB(x);
+		primitive.mesh_idx = i++;
+		primitive.material = x.material;
+		primitive.sphere = x;
+		primitives.push_back(primitive);
 	}
 
 	std::sort(primitives.begin(), primitives.end());
 	countLevels(primitives, 0);
+
 	Node empty;
 	empty.depth = -1;
 	nodes.resize(glm::pow(2, levels) - 1, empty);
@@ -80,12 +86,22 @@ void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth
 		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
 		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
 
-		build(left_nodes, depth + 1, 2 * idx + 1);
-		build(right_nodes, depth + 1, 2 * idx + 2);
+		if(!left_nodes.empty())
+			build(left_nodes, depth + 1, 2 * idx + 1);
+		if(!right_nodes.empty())
+			build(right_nodes, depth + 1, 2 * idx + 2);
 	}
 }
 
+AxisAlignedBox BoundingVolumeHierarchy::getAABB(Sphere sphere) {
+	glm::vec3 lower = sphere.center - glm::vec3(sphere.radius);
+	glm::vec3 upper = sphere.center + glm::vec3(sphere.radius);
+	return AxisAlignedBox{ lower, upper };
+}
+
 AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Primitive> primitives) {
+	float bias = 0.001;
+
 	float x_min = std::numeric_limits<float>::max();
 	float y_min = std::numeric_limits<float>::max();
 	float z_min = std::numeric_limits<float>::max();
@@ -120,7 +136,7 @@ AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Primitive> primitive
 			z_max = primitive.aabb.upper.z;
 		}
 	}
-	return { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
+	return { glm::vec3(x_min - bias, y_min - bias, z_min - bias), glm::vec3(x_max + bias, y_max + bias, z_max + bias) };
 }
 
 
@@ -141,17 +157,83 @@ int BoundingVolumeHierarchy::numLevels()
 	return levels;
 }
 
+
+void swap(float& a, float& b) {
+	float temp = a;
+	a = b;
+	b = temp;
+}
+
+//Code from
+//h*ttps://www.scratchapixel.com/lessons/3d-basic-rendering/minimal-ray-tracer-rendering-simple-shapes/ray-box-intersection
+
+bool BoundingVolumeHierarchy::AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const {
+	float tmin = (aabb.lower.x - ray.origin.x) / ray.direction.x;
+	float tmax = (aabb.upper.x - ray.origin.x) / ray.direction.x;
+
+	if (tmin > tmax) swap(tmin, tmax);
+
+	float tymin = (aabb.lower.y - ray.origin.y) / ray.direction.y;
+	float tymax = (aabb.upper.y - ray.origin.y) / ray.direction.y;
+
+	if (tymin > tymax) swap(tymin, tymax);
+
+	if ((tmin > tymax) || (tymin > tmax))
+		return false;
+
+	if (tymin > tmin)
+		tmin = tymin;
+
+	if (tymax < tmax)
+		tmax = tymax;
+
+	float tzmin = (aabb.lower.z - ray.origin.z) / ray.direction.z;
+	float tzmax = (aabb.upper.z - ray.origin.z) / ray.direction.z;
+
+	if (tzmin > tzmax) swap(tzmin, tzmax);
+
+	if ((tmin > tzmax) || (tzmin > tmax))
+		return false;
+
+	if (tzmin > tmin)
+		tmin = tzmin;
+
+	if (tzmax < tmax)
+		tmax = tzmax;
+
+	return true;
+}
+
 bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpolate, int idx) const {
-	if (idx >= maxLvlIdx) {
-		Node node = *(nodes.begin()+idx);
-		intersectTriangles(node, ray, hitInfo, interpolate);
+	if (nodes[idx].depth == -1)
+		return false;
+
+	if (!AABBIntersect(ray, nodes[idx].aabb)) 
+		return false;
+
+	if (nodes[idx].isLeaf) {
+		Node node = nodes[idx];
+		return intersectPrimitive(node, ray, hitInfo, interpolate);
 	}
-	float t0x = (B0x - Ox) / Dx;
-	float t1x = (B1x - Ox) / Dx
-	float t0y = (B0y - Oy) / Dy
-	float t1y = (B1y - Oy) / Dy
-	float t0z = (B0z - Oz) / Dz
-	float t1z = (B1z - Oz) / Dz
+
+	Ray left = ray, right = ray;
+	HitInfo leftInf, rightInf;
+	intersect(left, leftInf, interpolate, 2 * idx + 1);
+	intersect(right, rightInf, interpolate, 2 * idx + 2);
+
+	//Return the corrent outcome
+	if (left.t == std::numeric_limits<float>::max() && right.t == std::numeric_limits<float>::max()) {
+		return false;
+	}
+	else if (left.t < right.t) {
+		ray = left;
+		hitInfo = leftInf;
+	} else {
+		ray = right;
+		hitInfo = rightInf;
+	}
+
+	return true;
 }
 
 
@@ -161,30 +243,39 @@ bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpo
 // file you like, including bounding_volume_hierarchy.h .
 
 
-bool BoundingVolumeHierarchy::intersectTriangles(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const
+bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const
 {
 	bool hit = false;
 	float t = ray.t;
 	// Intersect with all triangles of all meshes.
 	for (const Primitive& primitive : node.primitives) {
-		const auto& v0 = primitive.triangle.x;
-		const auto& v1 = primitive.triangle.y;
-		const auto& v2 = primitive.triangle.z;
-		hit |= intersectRayWithTriangle(v0, v1, v2, ray, hitInfo);
-		if (ray.t < t && t > 0) {
-			if (interpolate) {
-				glm::vec3 p = ray.t * ray.direction + ray.origin;
-				float total_area = glm::length(glm::cross(v1.p - v0.p, v2.p - v0.p)) / 2.0f;
-				float alpha = (glm::length(glm::cross(v1 - p, v2 - p)) / 2.0f) / total_area;
-				float beta = (glm::length(glm::cross(v0.p - p, v2.p - p)) / 2.0f) / total_area;
-				float gamma = (glm::length(glm::cross(v0.p - p, v1.p - p)) / 2.0f) / total_area;
-				hitInfo.normal = glm::normalize(v0.n * alpha + v1.n * beta + v2.n * gamma);
+		if (primitive.sphere.radius != 0.0f) {
+			hit |= intersectRayWithShape(primitive.sphere, ray, hitInfo);
+			if (ray.t < t && t > 0) {
+				hitInfo.material = primitive.material;
+				hitInfo.normal = glm::normalize(-ray.direction);
 			}
-			else {
-				hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
+		}
+		else {
+			const auto& v0 = primitive.triangle[0];
+			const auto& v1 = primitive.triangle[1];
+			const auto& v2 = primitive.triangle[2];
+			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
+			if (ray.t < t && t > 0) {
+				if (interpolate) {
+					glm::vec3 p = ray.t * ray.direction + ray.origin;
+					float total_area = glm::length(glm::cross(v1.p - v0.p, v2.p - v0.p)) / 2.0f;
+					float alpha = (glm::length(glm::cross(v1.p - p, v2.p - p)) / 2.0f) / total_area;
+					float beta = (glm::length(glm::cross(v0.p - p, v2.p - p)) / 2.0f) / total_area;
+					float gamma = (glm::length(glm::cross(v0.p - p, v1.p - p)) / 2.0f) / total_area;
+					hitInfo.normal = glm::normalize(v0.n * alpha + v1.n * beta + v2.n * gamma);
+				}
+				else {
+					hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
+				}
+				hitInfo.material = primitive.material;
+				t = ray.t;
 			}
-			hitInfo.material = mesh.material;
-			t = ray.t;
 		}
 	}
 	ray.t = t;

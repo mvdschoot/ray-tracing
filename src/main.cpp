@@ -72,7 +72,7 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 	Ray toLight{ intersectPoint + vToLight * 0.001f, vToLight };
 
 	HitInfo inf;
-	bool intersect = bvh.intersect(toLight, inf, interpolate);
+	bool intersect = bvh.intersect(toLight, inf, interpolate, 0);
 	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
 	if (toLight.t > 1 && right) {
@@ -128,7 +128,7 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 	glm::vec3 color = glm::vec3(0.0f);
 
 	float bias = 0.00001f;
-	if (bvh.intersect(ray, hitInfo, interpolate)) {
+	if (bvh.intersect(ray, hitInfo, interpolate, 0)) {
 		if (hitInfo.material.ks != glm::vec3(0.0f) && depth++ < RECURSION_DEPTH && recursive) {
 			Ray reflectedRay;
 			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
@@ -244,7 +244,7 @@ int main(int argc, char** argv)
 				bvh = BoundingVolumeHierarchy(&scene, MAX_BVH_LEVEL);
 				if (optDebugRay) {
 					HitInfo dummy{};
-					bvh.intersect(*optDebugRay, dummy, interpolate);
+					bvh.intersect(*optDebugRay, dummy, interpolate, 0);
 				}
 			}
 		}

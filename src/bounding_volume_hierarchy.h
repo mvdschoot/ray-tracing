@@ -9,9 +9,11 @@ class BoundingVolumeHierarchy {
 
 	struct Primitive
 	{
-		Triangle triangle;
+		std::vector<Vertex> triangle;
 		int mesh_idx;
 		AxisAlignedBox aabb;
+		Material material;
+		Sphere sphere{ glm::vec3{},0.0f,Material{} };
 
 		bool operator < (const Primitive& other) const
 		{
@@ -42,26 +44,22 @@ public:
 	int levels = std::numeric_limits<float>::min();
 	int MAX_BVH_LEVEL;
 
-	// Return true if something is hit, returns false otherwise.
-	// Only find hits if they are closer than t stored in the ray and the intersection
-	// is on the correct side of the origin (the new t >= 0).
-	bool intersect(Ray& ray, HitInfo& hitInfo) const;
-
 	std::vector<Node> nodes;
 
 	void build(std::vector<Primitive> primitives, int depth, int idx);
 	void countLevels(std::vector<Primitive> primitives, int depth);
 	AxisAlignedBox getAABB(std::vector<Primitive> primitives);
+	AxisAlignedBox getAABB(Sphere sphere);
 
 
     // Return true if something is hit, returns false otherwise.
     // Only find hits if they are closer than t stored in the ray and the intersection
     // is on the correct side of the origin (the new t >= 0).
     bool intersect(Ray& ray, HitInfo& hitInfo, bool interpolate, int idx) const;
-	bool intersectTriangles(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const;
-
+	bool intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const;
 private:
+	bool AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const;
+
 	Scene* m_pScene;
-	int maxLvlIdx;
 };
 
