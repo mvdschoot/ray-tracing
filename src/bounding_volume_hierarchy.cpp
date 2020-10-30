@@ -9,6 +9,12 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 	: m_pScene(pScene)
 {
 	this->MAX_BVH_LEVEL = MAX_BVH_LEVEL;
+	int currentIdx = 0;
+	for(int x = 0; x < MAX_BVH_LEVEL; x++) {
+		currentIdx * 2 + 1;
+	}
+	maxLvlIdx = currentIdx;
+
 	std::vector<Primitive> primitives;
 
 	for (int i = 0; i != m_pScene->meshes.size(); i++) {
@@ -135,37 +141,50 @@ int BoundingVolumeHierarchy::numLevels()
 	return levels;
 }
 
+bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpolate, int idx) const {
+	if (idx >= maxLvlIdx) {
+		Node node = *(nodes.begin()+idx);
+		intersectTriangles(node, ray, hitInfo, interpolate);
+	}
+	float t0x = (B0x - Ox) / Dx;
+	float t1x = (B1x - Ox) / Dx
+	float t0y = (B0y - Oy) / Dy
+	float t1y = (B1y - Oy) / Dy
+	float t0z = (B0z - Oz) / Dz
+	float t1z = (B1z - Oz) / Dz
+}
+
 
 // Return true if something is hit, returns false otherwise. Only find hits if they are closer than t stored
 // in the ray and if the intersection is on the correct side of the origin (the new t >= 0). Replace the code
 // by a bounding volume hierarchy acceleration structure as described in the assignment. You can change any
 // file you like, including bounding_volume_hierarchy.h .
-bool BoundingVolumeHierarchy::intersect(Ray& ray, HitInfo& hitInfo, bool interpolate) const
+
+
+bool BoundingVolumeHierarchy::intersectTriangles(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const
 {
 	bool hit = false;
 	float t = ray.t;
 	// Intersect with all triangles of all meshes.
-	for (const auto& mesh : m_pScene->meshes) {
-		for (const auto& tri : mesh.triangles) {
-			const auto& v0 = mesh.vertices[tri[0]];
-			const auto& v1 = mesh.vertices[tri[1]];
-			const auto& v2 = mesh.vertices[tri[2]];
-			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
-			if (ray.t < t && t > 0) {
-				if (interpolate) {
-					glm::vec3 p = ray.t * ray.direction + ray.origin;
-					float total_area = glm::length(glm::cross(v1.p - v0.p, v2.p - v0.p)) / 2.0f;
-					float alpha = (glm::length(glm::cross(v1.p - p, v2.p - p)) / 2.0f) / total_area;
-					float beta = (glm::length(glm::cross(v0.p - p, v2.p - p)) / 2.0f) / total_area;
-					float gamma = (glm::length(glm::cross(v0.p - p, v1.p - p)) / 2.0f) / total_area;
-					hitInfo.normal = glm::normalize(v0.n * alpha + v1.n * beta + v2.n * gamma);
-				}
-				else {
-					hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
-				}
-				hitInfo.material = mesh.material;
-				t = ray.t;
+	for (const Primitive& primitive : node.primitives) {
+		const auto& v0 = primitive.triangle.x;
+		const auto& v1 = primitive.triangle.y;
+		const auto& v2 = primitive.triangle.z;
+		hit |= intersectRayWithTriangle(v0, v1, v2, ray, hitInfo);
+		if (ray.t < t && t > 0) {
+			if (interpolate) {
+				glm::vec3 p = ray.t * ray.direction + ray.origin;
+				float total_area = glm::length(glm::cross(v1.p - v0.p, v2.p - v0.p)) / 2.0f;
+				float alpha = (glm::length(glm::cross(v1 - p, v2 - p)) / 2.0f) / total_area;
+				float beta = (glm::length(glm::cross(v0.p - p, v2.p - p)) / 2.0f) / total_area;
+				float gamma = (glm::length(glm::cross(v0.p - p, v1.p - p)) / 2.0f) / total_area;
+				hitInfo.normal = glm::normalize(v0.n * alpha + v1.n * beta + v2.n * gamma);
 			}
+			else {
+				hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
+			}
+			hitInfo.material = mesh.material;
+			t = ray.t;
 		}
 	}
 	ray.t = t;
