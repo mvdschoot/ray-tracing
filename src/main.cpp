@@ -79,7 +79,6 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 		toLight.t = 1.0f;
 		drawRay(toLight);
 
-		hitInfo.material.shininess = 64;
 		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
 		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
 		const glm::vec3 diff = pointLight.position - (ray.origin + ray.direction * ray.t);
