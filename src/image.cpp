@@ -28,7 +28,7 @@ Image::Image(const std::filesystem::path& filePath)
         throw std::exception();
     }
 
-    std::cout << "Num channels: " << numChannels << std::endl;
+    // std::cout << "Num channels: " << numChannels << std::endl;
     for (size_t i = 0; i < m_width * m_height * numChannels; i += numChannels) {
         m_pixels.emplace_back(pixels[i + 0] / 255.0f, pixels[i + 1] / 255.0f, pixels[i + 2] / 255.0f);
     }
