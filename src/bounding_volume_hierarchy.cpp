@@ -14,10 +14,10 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 	int i = 0;
 	for (; i != m_pScene->meshes.size(); i++) {
 		Mesh mesh = m_pScene->meshes[i];
-		for (const auto& tri : mesh.triangles) {
-			const auto& v0 = mesh.vertices[tri[0]];
-			const auto& v1 = mesh.vertices[tri[1]];
-			const auto& v2 = mesh.vertices[tri[2]];
+		for (int x = 0; x < mesh.triangles.size(); x++) {
+			const auto& v0 = mesh.vertices[mesh.triangles[x][0]];
+			const auto& v1 = mesh.vertices[mesh.triangles[x][1]];
+			const auto& v2 = mesh.vertices[mesh.triangles[x][2]];
 
 			float x_min = glm::min(v0.p.x, glm::min(v1.p.x, v2.p.x));
 			float y_min = glm::min(v0.p.y, glm::min(v1.p.y, v2.p.y));
@@ -29,19 +29,16 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 
 			Primitive primitive;
 			primitive.aabb = { glm::vec3(x_min, y_min, z_min), glm::vec3(x_max, y_max, z_max) };
-			primitive.triangle.push_back(v0);
-			primitive.triangle.push_back(v1);
-			primitive.triangle.push_back(v2);
+			primitive.triangle = x;
 			primitive.mesh_idx = i;
-			primitive.material = mesh.material;
+			primitive.isSphere = false;
 			primitives.push_back(primitive);
 		}
-	} for (Sphere x : m_pScene->spheres) {
+	} for (int x = 0; x < m_pScene->spheres.size(); x++) {
 		Primitive primitive;
-		primitive.aabb = getAABB(x);
-		primitive.mesh_idx = i++;
-		primitive.material = x.material;
-		primitive.sphere = x;
+		primitive.aabb = getAABB(m_pScene->spheres[x]);
+		primitive.mesh_idx = x;
+		primitive.isSphere = true;
 		primitives.push_back(primitive);
 	}
 
@@ -111,7 +108,7 @@ AxisAlignedBox BoundingVolumeHierarchy::getAABB(std::vector<Primitive> primitive
 	float z_max = std::numeric_limits<float>::min();
 
 
-	for (Primitive primitive : primitives) {
+	for (Primitive& primitive : primitives) {
 		if (primitive.aabb.lower.x < x_min) {
 			x_min = primitive.aabb.lower.x;
 		}
@@ -200,7 +197,6 @@ bool BoundingVolumeHierarchy::AABBIntersect(Ray& ray, const AxisAlignedBox aabb)
 
 	if (tzmax < tmax)
 		tmax = tzmax;
-
 	return true;
 }
 
@@ -249,17 +245,20 @@ bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& h
 	float t = ray.t;
 	// Intersect with all triangles of all meshes.
 	for (const Primitive& primitive : node.primitives) {
-		if (primitive.sphere.radius != 0.0f) {
-			hit |= intersectRayWithShape(primitive.sphere, ray, hitInfo);
+		if (primitive.isSphere) {
+			Sphere sphere = m_pScene->spheres[primitive.mesh_idx];
+			hit |= intersectRayWithShape(sphere, ray, hitInfo);
 			if (ray.t < t && t > 0) {
-				hitInfo.material = primitive.material;
+				hitInfo.material = sphere.material;
 				hitInfo.normal = glm::normalize(-ray.direction);
 			}
 		}
 		else {
-			const auto& v0 = primitive.triangle[0];
-			const auto& v1 = primitive.triangle[1];
-			const auto& v2 = primitive.triangle[2];
+			Mesh mesh = m_pScene->meshes[primitive.mesh_idx];
+			Triangle tri = mesh.triangles[primitive.triangle];
+			const auto& v0 = mesh.vertices[tri[0]];
+			const auto& v1 = mesh.vertices[tri[1]];
+			const auto& v2 = mesh.vertices[tri[2]];
 			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
 			if (ray.t < t && t > 0) {
 				if (interpolate) {
@@ -273,7 +272,7 @@ bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& h
 				else {
 					hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
 				}
-				hitInfo.material = primitive.material;
+				hitInfo.material = mesh.material;
 				t = ray.t;
 			}
 		}

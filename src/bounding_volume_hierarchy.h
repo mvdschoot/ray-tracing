@@ -9,11 +9,10 @@ class BoundingVolumeHierarchy {
 
 	struct Primitive
 	{
-		std::vector<Vertex> triangle;
+		unsigned int triangle;
 		int mesh_idx;
 		AxisAlignedBox aabb;
-		Material material;
-		Sphere sphere{ glm::vec3{},0.0f,Material{} };
+		bool isSphere;
 
 		bool operator < (const Primitive& other) const
 		{
