@@ -32,7 +32,7 @@ const std::filesystem::path dataPath{ DATA_DIR };
 const std::filesystem::path outputPath{ OUTPUT_DIR };
 
 // Constants
-const int MAX_BVH_LEVEL = 10;
+const int MAX_BVH_LEVEL = 15;
 const int RECURSION_DEPTH = 3;
 const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 

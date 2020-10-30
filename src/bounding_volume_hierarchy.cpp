@@ -5,6 +5,22 @@
 #include <glm/vector_relational.hpp>
 #include <iostream>
 
+bool xSort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.x + a.aabb.lower.x) / 2.0f;
+	float centroid_other = (b.aabb.upper.x + b.aabb.lower.x) / 2.0f;
+	return (centroid < centroid_other);
+}
+bool ySort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.y + a.aabb.lower.y) / 2.0f;
+	float centroid_other = (b.aabb.upper.y + b.aabb.lower.y) / 2.0f;
+	return (centroid < centroid_other);
+}
+bool zSort(Primitive a, Primitive b) {
+	float centroid = (a.aabb.upper.z + a.aabb.lower.z) / 2.0f;
+	float centroid_other = (b.aabb.upper.z + b.aabb.lower.z) / 2.0f;
+	return (centroid < centroid_other);
+}
+
 BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BVH_LEVEL)
 	: m_pScene(pScene)
 {
@@ -42,13 +58,17 @@ BoundingVolumeHierarchy::BoundingVolumeHierarchy(Scene* pScene, const int MAX_BV
 		primitives.push_back(primitive);
 	}
 
-	std::sort(primitives.begin(), primitives.end());
+	sortPrimitives(primitives);
 	countLevels(primitives, 0);
 
 	Node empty;
 	empty.depth = -1;
 	nodes.resize(glm::pow(2, levels) - 1, empty);
 	build(primitives, 0, 0);
+}
+
+void BoundingVolumeHierarchy::sortPrimitives(std::vector<Primitive>& primitives) {
+	int a = 0;
 }
 
 void BoundingVolumeHierarchy::countLevels(std::vector<Primitive> primitives, int depth)
@@ -64,6 +84,44 @@ void BoundingVolumeHierarchy::countLevels(std::vector<Primitive> primitives, int
 	}
 }
 
+float BoundingVolumeHierarchy::getVolume(AxisAlignedBox aabb) {
+	float dx = aabb.upper.x - aabb.lower.x;
+	float dy = aabb.upper.y - aabb.lower.y;
+	float dz = aabb.upper.z - aabb.lower.z;
+	return dx * dy * dz;
+}
+
+void BoundingVolumeHierarchy::SAHsplit(AxisAlignedBox aabb, std::vector<Primitive> primitives){ 
+	std::vector<Primitive> l, r;
+	//x split
+	std::sort(primitives.begin(), primitives.end(), xSort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costx = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	//y split
+	std::sort(primitives.begin(), primitives.end(), ySort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costy = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	//z split
+	std::sort(primitives.begin(), primitives.end(), zSort);
+	l = std::vector<Primitive>(primitives.begin(), primitives.begin() + primitives.size() / 2);
+	r = std::vector<Primitive>(primitives.begin() + primitives.size() / 2, primitives.end());
+	float costz = (getVolume(getAABB(l)) / getVolume(aabb)) + (getVolume(getAABB(r)) / getVolume(aabb));
+
+	if (costx > costy && costx > costz) {
+		std::sort(primitives.begin(), primitives.end(), xSort);
+	}
+	else if (costy > costx && costy > costz) {
+		std::sort(primitives.begin(), primitives.end(), ySort);
+	}
+	else if (costz > costx && costz > costy) {
+		std::sort(primitives.begin(), primitives.end(), ySort);
+	}
+}
+
 void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth, int idx)
 {
 	Node node;
@@ -76,10 +134,12 @@ void BoundingVolumeHierarchy::build(std::vector<Primitive> primitives, int depth
 		nodes[idx] = node;
 	}
 	else {
+		 
 		node.aabb = getAABB(primitives);
 		node.idx = idx;
 		nodes[idx] = node;
 
+		SAHsplit(node.aabb, primitives);
 		std::vector<Primitive> left_nodes(primitives.begin(), primitives.begin() + primitives.size() / 2);
 		std::vector<Primitive> right_nodes(primitives.begin() + primitives.size() / 2, primitives.end());
 
@@ -254,11 +314,9 @@ bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& h
 			}
 		}
 		else {
-			Mesh mesh = m_pScene->meshes[primitive.mesh_idx];
-			Triangle tri = mesh.triangles[primitive.triangle];
-			const auto& v0 = mesh.vertices[tri[0]];
-			const auto& v1 = mesh.vertices[tri[1]];
-			const auto& v2 = mesh.vertices[tri[2]];
+			const auto& v0 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][0]];
+			const auto& v1 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][1]];
+			const auto& v2 = m_pScene->meshes[primitive.mesh_idx].vertices[m_pScene->meshes[primitive.mesh_idx].triangles[primitive.triangle][2]];
 			hit |= intersectRayWithTriangle(v0.p, v1.p, v2.p, ray, hitInfo);
 			if (ray.t < t && t > 0) {
 				if (interpolate) {
@@ -272,7 +330,7 @@ bool BoundingVolumeHierarchy::intersectPrimitive(Node node, Ray& ray, HitInfo& h
 				else {
 					hitInfo.normal = glm::normalize(glm::cross((v1.p - v0.p), (v2.p - v0.p)));
 				}
-				hitInfo.material = mesh.material;
+				hitInfo.material = m_pScene->meshes[primitive.mesh_idx].material;
 				t = ray.t;
 			}
 		}

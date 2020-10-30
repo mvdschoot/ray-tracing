@@ -4,23 +4,23 @@
 #include <array>
 #include <gsl-lite/gsl-lite.hpp>
 
+struct Primitive
+{
+	unsigned int triangle;
+	int mesh_idx;
+	AxisAlignedBox aabb;
+	bool isSphere;
+
+	/*bool operator < (const Primitive& other) const
+	{
+		float centroid = (aabb.upper.x + aabb.lower.x) / 2.0f;
+		float centroid_other = (other.aabb.upper.x + other.aabb.lower.x) / 2.0f;
+
+		return (centroid < centroid_other);
+	}*/
+};
 
 class BoundingVolumeHierarchy {
-
-	struct Primitive
-	{
-		unsigned int triangle;
-		int mesh_idx;
-		AxisAlignedBox aabb;
-		bool isSphere;
-
-		bool operator < (const Primitive& other) const
-		{
-			float centroid_x = (aabb.upper.x + aabb.lower.x) / 2.0f;
-			float centroid_other_x = (other.aabb.upper.x + other.aabb.lower.x) / 2.0f;
-			return (centroid_x < centroid_other_x);
-		}
-	};
 
 	struct Node
 	{
@@ -58,6 +58,9 @@ public:
 	bool intersectPrimitive(Node node, Ray& ray, HitInfo& hitInfo, bool interpolate) const;
 private:
 	bool AABBIntersect(Ray& ray, const AxisAlignedBox aabb) const;
+	void sortPrimitives(std::vector<Primitive>& primitives);
+	void SAHsplit(AxisAlignedBox aabb, std::vector<Primitive> primitives);
+	float getVolume(AxisAlignedBox aabb);
 
 	Scene* m_pScene;
 };
