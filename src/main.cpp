@@ -39,6 +39,8 @@ const std::vector<std::string> N_THREAD_VALUES{ "1", "2", "5", "10", "20" };
 // Ray Tracing options
 bool recursive = true;
 bool interpolate = false;
+bool hardShadows = true;
+bool softShadows = true;
 int n_threads_idx = 0;
 
 enum class ViewMode {
@@ -75,9 +77,11 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 	bool intersect = bvh.intersect(toLight, inf, interpolate, 0);
 	bool right = rightSideOfPlane(ray, toLight, hitInfo.normal);
 
-	if (toLight.t > 1 && right) {
+	if ((toLight.t > 1 && right) || !hardShadows || !softShadows) {
 		toLight.t = 1.0f;
-		drawRay(toLight);
+		if (hardShadows || softShadows) {
+			drawRay(toLight);
+		}
 
 		color += diffuse(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position);
 		color += specular(hitInfo.material, ray.origin + ray.direction * ray.t, hitInfo.normal, pointLight.position, ray.origin);
@@ -90,7 +94,9 @@ static glm::vec3 colorPointLight(const PointLight& pointLight, const BoundingVol
 		if (toLight.t > 1) {
 			toLight.t = 1;
 		}
-		drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		if (hardShadows || softShadows) {
+			drawRay(toLight, glm::vec3{ 1.0f,0.0f,0.0f });
+		}
 	}
 	return color;
 }
@@ -99,6 +105,7 @@ static glm::vec3 calculateColor(const Scene& scene, const BoundingVolumeHierarch
 {
 
 	glm::vec3 color = glm::vec3(0.0f);
+
 
 	for (const PointLight& pointLight : scene.pointLights) {
 		color += colorPointLight(pointLight, bvh, ray, hitInfo);
@@ -132,14 +139,16 @@ static glm::vec3 getFinalColorRecursive(const Scene& scene, const BoundingVolume
 			Ray reflectedRay;
 			reflectedRay.direction = ray.direction - hitInfo.normal * glm::dot(hitInfo.normal, ray.direction) * 2.0f;
 			reflectedRay.origin = (ray.origin + ray.direction * ray.t) + reflectedRay.direction * bias;
-			color = getFinalColorRecursive(scene, bvh, reflectedRay, depth);
+			color = calculateColor(scene, bvh, ray, hitInfo) + getFinalColorRecursive(scene, bvh, reflectedRay, depth);
 		}
 		else {
 			color = calculateColor(scene, bvh, ray, hitInfo);
 		}
+		drawRay(ray, color);
 	}
-
-	drawRay(ray, color);
+	else {
+		drawRay(ray, glm::vec3(1.0f, 0.0f, 0.0f));
+	}
 	return color;
 }
 
@@ -274,8 +283,11 @@ int main(int argc, char** argv)
 
 				std::cout << "\nTime to render image: " << std::setfill('0') << std::setw(2) << h << ':' << std::setw(2) << m << ':' << std::setw(2) << s << '.' << std::setw(3) << ms << std::endl;
 				std::cout << "Number of triangles: " << n_triangles << std::endl;
+				std::cout << "Number of BVH levels: " << bvh.levels << std::endl;
 				std::cout << "- Recursive: " << (recursive ? "yes" : "no") << std::endl;
 				std::cout << "- Interpolated normals: " << (interpolate ? "yes" : "no") << std::endl;
+				std::cout << "- Hard Shadows: " << (hardShadows ? "yes" : "no") << std::endl;
+				std::cout << "- Soft Shadows: " << (softShadows ? "yes" : "no") << std::endl;
 				std::cout << "- Number of threads: " << N_THREAD_VALUES[n_threads_idx] << std::endl;
 			}
 			screen.writeBitmapToFile(outputPath / "render.bmp");
@@ -294,6 +306,8 @@ int main(int argc, char** argv)
 		ImGui::Text("Ray Tracing");
 		ImGui::Checkbox("Recursive Ray Tracing", &recursive);
 		ImGui::Checkbox("Interpolate Normals", &interpolate);
+		ImGui::Checkbox("Hard Shadows", &hardShadows);
+		ImGui::Checkbox("Soft Shadows", &softShadows);
 
 		std::vector<const char*> optionsPointers;
 		std::transform(std::begin(N_THREAD_VALUES), std::end(N_THREAD_VALUES), std::back_inserter(optionsPointers),
